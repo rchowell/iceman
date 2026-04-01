@@ -1,0 +1,22 @@
+[package]
+name = "iceman"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+[[bin]]
+name = "iceman"
+path = "src/bin/iceman.rs"
+
+[[bin]]
+name = "pyiceman"
+path = "src/bin/pyiceman.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive", "env"] }
+dirs = "6"
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
+thiserror = "2"
+toml = "0.8"
