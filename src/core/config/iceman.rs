@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::ConfigError;
 
-use super::CatalogRef;
+use super::CatalogConfig;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct IcemanConfig {
@@ -32,7 +32,7 @@ pub struct IcemanCatalogConfig {
 }
 
 impl IcemanConfig {
-    pub fn resolve_catalog(&self, name: Option<&str>) -> Result<CatalogRef, ConfigError> {
+    pub fn resolve_catalog(&self, name: Option<&str>) -> Result<CatalogConfig, ConfigError> {
         let catalog_name = name
             .or(self.default_catalog.as_deref())
             .unwrap_or("default");
@@ -52,9 +52,9 @@ impl IcemanConfig {
             props.insert("warehouse".to_string(), warehouse.clone());
         }
 
-        Ok(CatalogRef {
+        Ok(CatalogConfig {
             name: catalog_name.to_string(),
-            catalog_type: entry.catalog_type.clone().unwrap_or_default(),
+            kind: entry.catalog_type.clone().unwrap_or_default(),
             props,
         })
     }

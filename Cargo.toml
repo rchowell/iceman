@@ -14,9 +14,32 @@ path = "src/bin/pyiceman.rs"
 
 [dependencies]
 anyhow = "1"
+async-trait = "0.1"
+aws-config = "1"
+aws-credential-types = "1"
+chrono = "0.4"
 clap = { version = "4", features = ["derive", "env"] }
 dirs = "6"
+iceberg = { git = "https://github.com/rchowell/iceberg-rust.git", branch = "release" }
+iceberg-catalog-glue = { git = "https://github.com/rchowell/iceberg-rust.git", branch = "release" }
+iceberg-catalog-hms = { git = "https://github.com/rchowell/iceberg-rust.git", branch = "release" }
+iceberg-catalog-rest = { git = "https://github.com/rchowell/iceberg-rust.git", branch = "release" }
+iceberg-catalog-s3tables = { git = "https://github.com/rchowell/iceberg-rust.git", branch = "release" }
+iceberg-catalog-sql = { git = "https://github.com/rchowell/iceberg-rust.git", branch = "release" }
+iceberg-storage-opendal = { git = "https://github.com/rchowell/iceberg-rust.git", branch = "release" }
+reqsign = "0.16"
+reqwest = "0.12"
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 serde_yaml = "0.9"
 thiserror = "2"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 toml = "0.8"
+
+[dev-dependencies]
+iceberg-catalog-sql = { git = "https://github.com/rchowell/iceberg-rust.git", branch = "release" }
+serde_json = "1"
+serde_yaml = "0.9"
+sqlx = { version = "0.8", features = ["any", "sqlite", "runtime-tokio", "tls-rustls", "migrate"], default-features = false }
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

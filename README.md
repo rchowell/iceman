@@ -1,11 +1,13 @@
 # Iceman
 
-A lightweight Iceberg CLI built in Rust, designed for AI agents. Ships two binaries:
+An Apache Iceberg CLI built in Rust, designed for AI agents.
 
-- **`iceman`** -- opinionated CLI with TOML config
-- **`pyiceman`** -- drop-in pyiceberg CLI replacement reading `.pyiceberg.yaml`
+**Binaries**
 
-Both share the same core backed by [iceberg-rust](https://github.com/apache/iceberg-rust).
+- **`iceman`** - experimental CLI
+- **`pyiceman`** - drop-in pyiceberg CLI replacement
+
+Both are powered by [iceberg-rust](https://github.com/apache/iceberg-rust).
 
 ## Install
 

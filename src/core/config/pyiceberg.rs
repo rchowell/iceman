@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::ConfigError;
 
-use super::CatalogRef;
+use super::CatalogConfig;
 
 const PYICEBERG_YAML: &str = ".pyiceberg.yaml";
 
@@ -34,40 +34,74 @@ pub struct PyIcebergCatalogConfig {
 }
 
 impl PyIcebergConfig {
-    pub fn resolve_catalog(&self, name: Option<&str>) -> Result<CatalogRef, ConfigError> {
+    pub fn resolve_catalog(&self, name: Option<&str>) -> Result<CatalogConfig, ConfigError> {
         let catalog_name = name
             .or(self.default_catalog.as_deref())
             .unwrap_or("default");
 
+        // Case-insensitive catalog lookup (matches PyIceberg behavior)
+        let catalog_name_lower = catalog_name.to_lowercase();
         let entry = self
             .catalog
-            .get(catalog_name)
-            .ok_or_else(|| ConfigError::CatalogNotFound {
-                name: catalog_name.to_string(),
-            })?;
-
-        let mut props: HashMap<String, String> = entry
-            .properties
             .iter()
-            .map(|(k, v)| (k.clone(), yaml_value_to_string(v)))
-            .collect();
+            .find(|(k, _)| k.to_lowercase() == catalog_name_lower)
+            .map(|(_, v)| v);
 
-        if let Some(ref uri) = entry.uri {
-            props.insert("uri".to_string(), uri.clone());
-        }
-        if let Some(ref warehouse) = entry.warehouse {
-            props.insert("warehouse".to_string(), warehouse.clone());
-        }
+        let mut props = HashMap::new();
 
-        Ok(CatalogRef {
-            name: catalog_name.to_string(),
-            catalog_type: entry.catalog_type.clone().unwrap_or_default(),
-            props,
-        })
+        if let Some(entry) = entry {
+            // Flatten nested YAML properties into dot-separated keys
+            for (k, v) in &entry.properties {
+                flatten_yaml_value(&k.to_lowercase(), v, &mut props);
+            }
+
+            if let Some(ref uri) = entry.uri {
+                props.insert("uri".to_string(), uri.clone());
+            }
+            if let Some(ref warehouse) = entry.warehouse {
+                props.insert("warehouse".to_string(), warehouse.clone());
+            }
+
+            Ok(CatalogConfig {
+                name: catalog_name.to_string(),
+                kind: entry.catalog_type.clone().unwrap_or_default().to_lowercase(),
+                props,
+            })
+        } else {
+            // Allow catalog-less operation: CLI overrides / env vars may supply enough
+            Ok(CatalogConfig {
+                name: catalog_name.to_string(),
+                kind: String::new(),
+                props,
+            })
+        }
     }
 }
 
-fn yaml_value_to_string(v: &serde_yaml::Value) -> String {
+/// Recursively flatten a YAML value into dot-separated keys.
+///
+/// Nested mappings like `s3: { endpoint: "http://..." }` become
+/// `s3.endpoint = "http://..."`, matching PyIceberg's behavior.
+fn flatten_yaml_value(prefix: &str, value: &serde_yaml::Value, out: &mut HashMap<String, String>) {
+    match value {
+        serde_yaml::Value::Mapping(map) => {
+            for (k, v) in map {
+                let key_str = yaml_scalar_to_string(k).to_lowercase();
+                let full_key = if prefix.is_empty() {
+                    key_str
+                } else {
+                    format!("{prefix}.{key_str}")
+                };
+                flatten_yaml_value(&full_key, v, out);
+            }
+        }
+        other => {
+            out.insert(prefix.to_string(), yaml_scalar_to_string(other));
+        }
+    }
+}
+
+fn yaml_scalar_to_string(v: &serde_yaml::Value) -> String {
     match v {
         serde_yaml::Value::String(s) => s.clone(),
         serde_yaml::Value::Bool(b) => b.to_string(),
@@ -275,5 +309,213 @@ mod tests {
             .map(|s| s.replace("__", ".").replace('_', "-").to_lowercase())
             .collect();
         assert_eq!(transformed, vec!["default-catalog"]);
+    }
+
+    // ── flatten nested YAML ─────────────────────────────────────────
+
+    #[test]
+    fn test_flatten_yaml_nested_mapping() {
+        let yaml: serde_yaml::Value = serde_yaml::from_str(
+            r#"
+            endpoint: http://localhost:9000
+            access-key-id: mykey
+            "#,
+        )
+        .unwrap();
+
+        let mut out = HashMap::new();
+        flatten_yaml_value("s3", &yaml, &mut out);
+        assert_eq!(out.get("s3.endpoint").unwrap(), "http://localhost:9000");
+        assert_eq!(out.get("s3.access-key-id").unwrap(), "mykey");
+    }
+
+    #[test]
+    fn test_flatten_yaml_deeply_nested() {
+        let yaml: serde_yaml::Value = serde_yaml::from_str(
+            r#"
+            a:
+              b:
+                c: deep
+            "#,
+        )
+        .unwrap();
+
+        let mut out = HashMap::new();
+        flatten_yaml_value("", &yaml, &mut out);
+        assert_eq!(out.get("a.b.c").unwrap(), "deep");
+    }
+
+    #[test]
+    fn test_flatten_yaml_scalar_unchanged() {
+        let yaml = serde_yaml::Value::String("hello".into());
+        let mut out = HashMap::new();
+        flatten_yaml_value("key", &yaml, &mut out);
+        assert_eq!(out.get("key").unwrap(), "hello");
+    }
+
+    #[test]
+    fn test_flatten_yaml_lowercases_keys() {
+        let yaml: serde_yaml::Value = serde_yaml::from_str(
+            r#"
+            Endpoint: http://localhost:9000
+            "#,
+        )
+        .unwrap();
+
+        let mut out = HashMap::new();
+        flatten_yaml_value("S3", &yaml, &mut out);
+        // prefix is passed already-lowercased by resolve_catalog,
+        // but nested keys should also be lowercased
+        assert_eq!(out.get("S3.endpoint").unwrap(), "http://localhost:9000");
+    }
+
+    // ── resolve_catalog ─────────────────────────────────────────────
+
+    fn make_config(yaml: &str) -> PyIcebergConfig {
+        serde_yaml::from_str(yaml).unwrap()
+    }
+
+    #[test]
+    fn test_resolve_catalog_basic() {
+        let cfg = make_config(
+            r#"
+            catalog:
+              my_cat:
+                type: rest
+                uri: http://localhost:8181
+                warehouse: wh1
+            "#,
+        );
+        let cat = cfg.resolve_catalog(Some("my_cat")).unwrap();
+        assert_eq!(cat.kind, "rest");
+        assert_eq!(cat.props.get("uri").unwrap(), "http://localhost:8181");
+        assert_eq!(cat.props.get("warehouse").unwrap(), "wh1");
+    }
+
+    #[test]
+    fn test_resolve_catalog_case_insensitive() {
+        let cfg = make_config(
+            r#"
+            catalog:
+              My_Catalog:
+                type: rest
+                uri: http://localhost:8181
+            "#,
+        );
+        // Lookup with different casing should still find it
+        let cat = cfg.resolve_catalog(Some("my_catalog")).unwrap();
+        assert_eq!(cat.kind, "rest");
+
+        let cat = cfg.resolve_catalog(Some("MY_CATALOG")).unwrap();
+        assert_eq!(cat.kind, "rest");
+    }
+
+    #[test]
+    fn test_resolve_catalog_missing_returns_empty() {
+        let cfg = make_config(
+            r#"
+            catalog:
+              existing:
+                type: rest
+            "#,
+        );
+        // Missing catalog should return empty config, not error
+        let cat = cfg.resolve_catalog(Some("nonexistent")).unwrap();
+        assert_eq!(cat.kind, "");
+        assert!(cat.props.is_empty());
+        assert_eq!(cat.name, "nonexistent");
+    }
+
+    #[test]
+    fn test_resolve_catalog_no_config_at_all() {
+        let cfg = PyIcebergConfig::default();
+        let cat = cfg.resolve_catalog(None).unwrap();
+        assert_eq!(cat.name, "default");
+        assert_eq!(cat.kind, "");
+        assert!(cat.props.is_empty());
+    }
+
+    #[test]
+    fn test_resolve_catalog_flattens_nested_properties() {
+        let cfg = make_config(
+            r#"
+            catalog:
+              my_cat:
+                type: rest
+                uri: http://localhost:8181
+                s3:
+                  endpoint: http://localhost:9000
+                  access-key-id: mykey
+            "#,
+        );
+        let cat = cfg.resolve_catalog(Some("my_cat")).unwrap();
+        assert_eq!(
+            cat.props.get("s3.endpoint").unwrap(),
+            "http://localhost:9000"
+        );
+        assert_eq!(cat.props.get("s3.access-key-id").unwrap(), "mykey");
+    }
+
+    #[test]
+    fn test_resolve_catalog_flat_dotted_keys_preserved() {
+        let cfg = make_config(
+            r#"
+            catalog:
+              my_cat:
+                type: rest
+                uri: http://localhost:8181
+                s3.endpoint: http://localhost:9000
+            "#,
+        );
+        let cat = cfg.resolve_catalog(Some("my_cat")).unwrap();
+        assert_eq!(
+            cat.props.get("s3.endpoint").unwrap(),
+            "http://localhost:9000"
+        );
+    }
+
+    #[test]
+    fn test_resolve_catalog_type_lowercased() {
+        let cfg = make_config(
+            r#"
+            catalog:
+              my_cat:
+                type: REST
+                uri: http://localhost:8181
+            "#,
+        );
+        let cat = cfg.resolve_catalog(Some("my_cat")).unwrap();
+        assert_eq!(cat.kind, "rest");
+    }
+
+    #[test]
+    fn test_resolve_catalog_default_fallback_chain() {
+        // With default-catalog set
+        let cfg = make_config(
+            r#"
+            default-catalog: secondary
+            catalog:
+              secondary:
+                type: rest
+                uri: http://secondary:8181
+              default:
+                type: rest
+                uri: http://default:8181
+            "#,
+        );
+        let cat = cfg.resolve_catalog(None).unwrap();
+        assert_eq!(cat.props.get("uri").unwrap(), "http://secondary:8181");
+
+        // Without default-catalog, falls back to "default"
+        let cfg = make_config(
+            r#"
+            catalog:
+              default:
+                type: rest
+                uri: http://default:8181
+            "#,
+        );
+        let cat = cfg.resolve_catalog(None).unwrap();
+        assert_eq!(cat.props.get("uri").unwrap(), "http://default:8181");
     }
 }

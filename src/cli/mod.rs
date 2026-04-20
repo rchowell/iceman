@@ -1,5 +1,4 @@
 pub mod iceman;
-pub mod pyiceman;
 
 use clap::{Subcommand, ValueEnum};
 
