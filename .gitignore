@@ -22,3 +22,11 @@ target
 
 # Additional context for Claude Code
 .context/
+.claude/
+
+# Python
+.mypy_cache/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.__pycache__/

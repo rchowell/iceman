@@ -1,0 +1,59 @@
+table: test_db.events
+scale_factor: 1
+base_rows: 1000000
+
+schema:
+  event_id:
+    type: long
+    distribution: uniform
+    range: [1, 9999999]
+  user_id:
+    type: int
+    distribution: zipf
+    range: [1, 100000]
+    exponent: 1.2
+  event_type:
+    type: string
+    distribution: zipf
+    values: [click, view, purchase, signup, logout]
+    exponent: 1.5
+  amount:
+    type: double
+    nullable: true
+    null_pct: 0.3
+    distribution: normal
+    mean: 49.99
+    stddev: 25.0
+    range: [0.01, 999.99]
+  event_ts:
+    type: timestamp
+    distribution: uniform
+    range: ["2024-01-01T00:00:00", "2025-12-31T23:59:59"]
+  event_date:
+    type: date
+    distribution: uniform
+    range: ["2024-01-01", "2025-12-31"]
+  region:
+    type: string
+    nullable: true
+    null_pct: 0.05
+    distribution: zipf
+    values: [us-east, us-west, eu-west, ap-south]
+    exponent: 1.0
+
+partitions:
+  event_date:
+    transform: month
+  region:
+    transform: identity
+  user_id:
+    transform: bucket
+    args: 16
+
+order_by:
+  event_ts:
+    direction: asc
+    null_order: last
+  user_id:
+    direction: asc
+    null_order: first
