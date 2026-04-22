@@ -1,5 +1,6 @@
-table: bench.t4_values
+table: sf_1.unpartitioned
 scale: 1
+compression_ratio: 3.0
 
 schema:
   id:

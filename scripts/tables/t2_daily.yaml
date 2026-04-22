@@ -1,5 +1,6 @@
-table: bench.t2_daily
+table: sf_1.ts_day
 scale: 1
+compression_ratio: 3.0
 
 schema:
   id:

@@ -1,5 +1,6 @@
-table: bench.t5_deletes
+table: sf_1.region_mor
 scale: 1
+compression_ratio: 3.0
 
 schema:
   id:

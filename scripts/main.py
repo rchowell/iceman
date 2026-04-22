@@ -76,6 +76,14 @@ class SortDef:
 
 
 @dataclass
+class FileBucketsDef:
+    column: str
+    num_buckets: int
+    bucket_width: float
+    rows_per_file: int | None = None
+
+
+@dataclass
 class TableSpec:
     table: str
     scale: float
@@ -88,10 +96,12 @@ class TableSpec:
     properties: dict[str, str] = field(default_factory=dict)
     delete_filter: str | None = None
     delete_pct: float = 0.0
+    file_buckets: FileBucketsDef | None = None
+    compression_ratio: float = 1.0
 
     @property
     def target_bytes(self) -> int:
-        return int(self.scale * ONE_GB)
+        return int(self.scale * self.compression_ratio * ONE_GB)
 
 
 # ---------------------------------------------------------------------------
@@ -162,6 +172,16 @@ def load_spec(path: str | Path, scale_override: float | None = None) -> TableSpe
     for k, v in raw.get("properties", {}).items():
         properties[str(k)] = str(v)
 
+    fb_raw = raw.get("file_buckets")
+    file_buckets = None
+    if fb_raw:
+        file_buckets = FileBucketsDef(
+            column=fb_raw["column"],
+            num_buckets=int(fb_raw["num_buckets"]),
+            bucket_width=float(fb_raw["bucket_width"]),
+            rows_per_file=fb_raw.get("rows_per_file"),
+        )
+
     return TableSpec(
         table=raw["table"],
         scale=scale,
@@ -174,6 +194,8 @@ def load_spec(path: str | Path, scale_override: float | None = None) -> TableSpe
         properties=properties,
         delete_filter=raw.get("delete_filter"),
         delete_pct=raw.get("delete_pct", 0.0),
+        file_buckets=file_buckets,
+        compression_ratio=raw.get("compression_ratio", 1.0),
     )
 
 
@@ -498,6 +520,9 @@ def create_and_populate(spec: TableSpec, catalog_name: str, batch_size: int, see
         print(f"Sort data by: {spec.sort_data_by}")
     if spec.write_chunk_size:
         print(f"Write chunk size: {spec.write_chunk_size:,}")
+    if spec.file_buckets:
+        fb = spec.file_buckets
+        print(f"File buckets: {fb.num_buckets} × width {fb.bucket_width} on '{fb.column}'")
     if spec.snapshots:
         print(f"Snapshots: {spec.snapshots}")
     if spec.properties:
@@ -573,6 +598,31 @@ def create_and_populate(spec: TableSpec, catalog_name: str, batch_size: int, see
                 table.append(batch)
                 rows_written = end
                 print(f"  wrote {rows_written:,} / {total_rows:,} rows ({_fmt_bytes(bytes_written)})")
+    elif spec.file_buckets:
+        fb = spec.file_buckets
+        target_col = next(c for c in spec.columns if c.name == fb.column)
+
+        if fb.rows_per_file:
+            rows_per_file = fb.rows_per_file
+        else:
+            sample = generate_batch(spec, gen, 1000)
+            bytes_per_row = sample.nbytes / sample.num_rows
+            rows_per_file = max(1, int(target / fb.num_buckets / bytes_per_row))
+
+        print(f"  rows per file: {rows_per_file:,}")
+
+        for i in range(fb.num_buckets):
+            lo = fb.bucket_width * i
+            hi = fb.bucket_width * (i + 1)
+            old_range = target_col.range
+            target_col.range = [lo, hi]
+            batch = generate_batch(spec, gen, rows_per_file)
+            target_col.range = old_range
+            table.append(batch)
+            bytes_written += batch.nbytes
+            rows_written += batch.num_rows
+            if (i + 1) % 100 == 0 or i == fb.num_buckets - 1:
+                print(f"  bucket {i + 1}/{fb.num_buckets}: value in [{lo}, {hi}) — {rows_written:,} rows total")
     else:
         if spec.snapshots:
             batches = []
@@ -615,6 +665,7 @@ def main():
     parser = argparse.ArgumentParser(description="Generate Iceberg test tables from YAML specs")
     parser.add_argument("spec", help="Path to YAML spec file")
     parser.add_argument("--catalog", default="default", help="Catalog name (default: default)")
+    parser.add_argument("--namespace", default=None, help="Override namespace (e.g. sf_1)")
     parser.add_argument("--scale", type=float, default=None, help="Override scale (1 = 1 GB)")
     parser.add_argument("--batch-size", type=int, default=500_000, help="Rows per write batch")
     parser.add_argument("--seed", type=int, default=42, help="RNG seed for reproducibility")
@@ -622,6 +673,11 @@ def main():
     args = parser.parse_args()
 
     spec = load_spec(args.spec, args.scale)
+
+    if args.namespace is not None:
+        table_name = spec.table.split(".")[-1]
+        spec.table = f"{args.namespace}.{table_name}"
+
     create_and_populate(spec, args.catalog, args.batch_size, args.seed, args.dry_run)
 
 

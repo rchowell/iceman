@@ -1,5 +1,6 @@
-table: bench.t3_sorted
+table: sf_1.id_sorted
 scale: 1
+compression_ratio: 2.0
 
 schema:
   id:
@@ -39,7 +40,7 @@ schema:
     type: string
     nullable: false
     distribution: uniform
-    length: [256, 256]
+    length: [128, 128]
 
 sort_data_by: [id]
 write_chunk_size: 100000

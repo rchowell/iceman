@@ -1,5 +1,6 @@
-table: bench.t1_region
+table: sf_1.region_identity
 scale: 1
+compression_ratio: 3.0
 
 schema:
   id:
