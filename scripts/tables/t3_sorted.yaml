@@ -1,6 +1,7 @@
 table: sf_1.id_sorted
 scale: 1
-compression_ratio: 2.0
+compression_ratio: 3.0
+target_file_size_bytes: 100_000_000
 
 schema:
   id:

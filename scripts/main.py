@@ -7,9 +7,12 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
 
+import io
+
 import numpy as np
 import pyarrow as pa
 import pyarrow.compute as pc
+import pyarrow.parquet as pq
 import yaml
 from pyiceberg.catalog import load_catalog
 from pyiceberg.partitioning import PartitionField, PartitionSpec
@@ -98,6 +101,7 @@ class TableSpec:
     delete_pct: float = 0.0
     file_buckets: FileBucketsDef | None = None
     compression_ratio: float = 1.0
+    target_file_size_bytes: int | None = None
 
     @property
     def target_bytes(self) -> int:
@@ -196,6 +200,7 @@ def load_spec(path: str | Path, scale_override: float | None = None) -> TableSpe
         delete_pct=raw.get("delete_pct", 0.0),
         file_buckets=file_buckets,
         compression_ratio=raw.get("compression_ratio", 1.0),
+        target_file_size_bytes=raw.get("target_file_size_bytes"),
     )
 
 
@@ -495,6 +500,13 @@ def _fmt_bytes(n: int) -> str:
     return f"{n / 1_000:.1f} KB"
 
 
+def _calibrate_parquet_row_bytes(spec: TableSpec, gen: "DataGenerator", sample_rows: int = 5_000) -> float:
+    sample = generate_batch(spec, gen, sample_rows)
+    buf = io.BytesIO()
+    pq.write_table(sample, buf)
+    return buf.tell() / sample_rows
+
+
 def create_and_populate(spec: TableSpec, catalog_name: str, batch_size: int, seed: int, dry_run: bool):
     schema = build_schema(spec)
     partition_spec = build_partition_spec(schema, spec)
@@ -569,6 +581,13 @@ def create_and_populate(spec: TableSpec, catalog_name: str, batch_size: int, see
     bytes_written = 0
     rows_written = 0
 
+    if spec.target_file_size_bytes:
+        parquet_bpr = _calibrate_parquet_row_bytes(spec, gen)
+        rows_per_file = max(1, int(spec.target_file_size_bytes / parquet_bpr))
+        print(f"  calibrated: {parquet_bpr:.0f} bytes/row on disk → {rows_per_file:,} rows/file at {_fmt_bytes(spec.target_file_size_bytes)}")
+    else:
+        rows_per_file = batch_size
+
     if spec.sort_data_by:
         batches = []
         while bytes_written < target:
@@ -591,7 +610,7 @@ def create_and_populate(spec: TableSpec, catalog_name: str, batch_size: int, see
                 rows_written = end
                 print(f"  snapshot {snap_i + 1}/{spec.snapshots}: wrote {end - start:,} rows ({rows_written:,} total)")
         else:
-            chunk = spec.write_chunk_size or batch_size
+            chunk = spec.write_chunk_size or rows_per_file
             while rows_written < total_rows:
                 end = min(rows_written + chunk, total_rows)
                 batch = full_table.slice(rows_written, end - rows_written)
@@ -604,10 +623,6 @@ def create_and_populate(spec: TableSpec, catalog_name: str, batch_size: int, see
 
         if fb.rows_per_file:
             rows_per_file = fb.rows_per_file
-        else:
-            sample = generate_batch(spec, gen, 1000)
-            bytes_per_row = sample.nbytes / sample.num_rows
-            rows_per_file = max(1, int(target / fb.num_buckets / bytes_per_row))
 
         print(f"  rows per file: {rows_per_file:,}")
 
@@ -641,7 +656,7 @@ def create_and_populate(spec: TableSpec, catalog_name: str, batch_size: int, see
                 print(f"  snapshot {snap_i + 1}/{spec.snapshots}: wrote {end - start:,} rows ({rows_written:,} total)")
         else:
             while bytes_written < target:
-                batch = generate_batch(spec, gen, batch_size)
+                batch = generate_batch(spec, gen, rows_per_file)
                 batch_bytes = batch.nbytes
                 table.append(batch)
                 bytes_written += batch_bytes
@@ -667,6 +682,7 @@ def main():
     parser.add_argument("--catalog", default="default", help="Catalog name (default: default)")
     parser.add_argument("--namespace", default=None, help="Override namespace (e.g. sf_1)")
     parser.add_argument("--scale", type=float, default=None, help="Override scale (1 = 1 GB)")
+    parser.add_argument("--target-file-size", type=int, default=None, dest="target_file_size_bytes", help="Target on-disk file size in bytes (e.g. 100000000 for 100 MB)")
     parser.add_argument("--batch-size", type=int, default=500_000, help="Rows per write batch")
     parser.add_argument("--seed", type=int, default=42, help="RNG seed for reproducibility")
     parser.add_argument("--dry-run", action="store_true", help="Validate and print spec without writing")
@@ -677,6 +693,9 @@ def main():
     if args.namespace is not None:
         table_name = spec.table.split(".")[-1]
         spec.table = f"{args.namespace}.{table_name}"
+
+    if args.target_file_size_bytes is not None:
+        spec.target_file_size_bytes = args.target_file_size_bytes
 
     create_and_populate(spec, args.catalog, args.batch_size, args.seed, args.dry_run)
 
