@@ -2,6 +2,24 @@ pub mod iceman;
 
 use clap::{Subcommand, ValueEnum};
 
+#[derive(Debug, Clone, ValueEnum)]
+pub enum InspectTable {
+    Snapshots,
+    History,
+    MetadataLog,
+    Refs,
+    Manifests,
+    AllManifests,
+    Entries,
+    AllEntries,
+    Files,
+    DataFiles,
+    DeleteFiles,
+    AllDataFiles,
+    AllDeleteFiles,
+    Partitions,
+}
+
 // Shared types used by both CLIs
 
 #[derive(Debug, Clone, ValueEnum)]
@@ -35,6 +53,23 @@ pub enum Command {
         /// Entity type to describe
         #[arg(long, default_value = "any")]
         entity: EntityType,
+    },
+
+    /// Inspect table metadata (snapshots, files, manifests, partitions, etc.)
+    Inspect {
+        /// Table identifier
+        identifier: String,
+
+        /// Metadata table to inspect
+        table: InspectTable,
+
+        /// Snapshot ID (for snapshot-scoped tables; defaults to current)
+        #[arg(long)]
+        snapshot_id: Option<i64>,
+
+        /// Max rows to display
+        #[arg(long)]
+        limit: Option<usize>,
     },
 
     /// List data files of a table

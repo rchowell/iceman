@@ -1,17 +1,35 @@
 use anyhow::Result;
 use clap::Parser;
+use iceberg::{Catalog, TableIdent};
 
 use iceman::cli::iceman::IcemanCli;
 use iceman::cli::{
-    Command, ConfigAction, CreateCommand, DropCommand, PropertiesCommand, PropertiesGetCommand,
-    PropertiesRemoveCommand, PropertiesSetCommand,
+    Command, ConfigAction, CreateCommand, DropCommand, OutputFormat, PropertiesCommand,
+    PropertiesGetCommand, PropertiesRemoveCommand, PropertiesSetCommand,
 };
+use iceman::core::catalog::load_catalog;
 use iceman::core::config::iceman::{default_config_path, init_default_config, load_config};
+use iceman::core::config::CatalogConfig;
+use iceman::inspect;
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     let cli = IcemanCli::parse();
 
     match cli.command {
+        Command::Inspect {
+            ref identifier,
+            ref table,
+            snapshot_id,
+            limit,
+        } => {
+            let catalog = resolve_catalog(&cli).await?;
+            let json = matches!(cli.output, OutputFormat::Json);
+            let parts: Vec<String> = identifier.split('.').map(String::from).collect();
+            let table_ident = TableIdent::from_strs(parts)?;
+            let loaded = catalog.load_table(&table_ident).await?;
+            inspect::run(&loaded, table, snapshot_id, limit, json).await
+        }
         Command::List { parent } => {
             todo!("list namespaces/tables under {:?}", parent)
         }
@@ -148,4 +166,16 @@ fn main() -> Result<()> {
             }
         },
     }
+}
+
+async fn resolve_catalog(cli: &IcemanCli) -> Result<std::sync::Arc<dyn Catalog>> {
+    let cfg = load_config(cli.config.as_deref())?;
+    let mut catalog_ref: CatalogConfig = cfg.resolve_catalog(cli.catalog.as_deref())?;
+    catalog_ref.apply_overrides(
+        cli.uri.as_deref(),
+        cli.warehouse.as_deref(),
+        cli.credential.as_deref(),
+        None,
+    );
+    load_catalog(&catalog_ref).await
 }

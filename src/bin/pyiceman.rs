@@ -79,6 +79,9 @@ async fn main() -> Result<()> {
             }
             Ok(())
         }
+        Command::Inspect { .. } => {
+            anyhow::bail!("inspect is not supported in pyiceman; use iceman inspect")
+        }
         Command::Describe {
             ref identifier,
             ref entity,
@@ -226,16 +229,14 @@ async fn main() -> Result<()> {
             let spec = table.metadata().default_partition_spec();
             if json {
                 println!("{}", serde_json::to_string(spec.as_ref())?);
+            } else if spec.fields().is_empty() {
+                println!("[]");
             } else {
-                if spec.fields().is_empty() {
-                    println!("[]");
-                } else {
-                    for field in spec.fields() {
-                        println!(
-                            "{}\t{}\t{}\t{}",
-                            field.field_id, field.source_id, field.name, field.transform
-                        );
-                    }
+                for field in spec.fields() {
+                    println!(
+                        "{}\t{}\t{}\t{}",
+                        field.field_id, field.source_id, field.name, field.transform
+                    );
                 }
             }
             Ok(())
