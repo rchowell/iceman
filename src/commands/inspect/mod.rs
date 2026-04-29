@@ -1,0 +1,338 @@
+pub mod entries;
+pub mod files;
+pub mod history;
+pub mod manifests;
+pub mod metadata_log;
+pub mod partitions;
+pub mod refs;
+pub mod snapshots;
+
+use anyhow::Result;
+use futures::future::try_join_all;
+use iceberg::spec::{ManifestEntryRef, SnapshotRef, TableMetadata};
+use iceberg::table::Table;
+use serde::Serialize;
+
+use crate::cli::{MetadataTable, OutputFormat};
+use crate::render::{Tabular, render_rows};
+
+pub async fn run(
+    table: &Table,
+    inspect_type: Option<&MetadataTable>,
+    query: Option<&str>,
+    snapshot_id: Option<i64>,
+    limit: Option<usize>,
+    fmt: OutputFormat,
+) -> Result<()> {
+    if let Some(sql) = query {
+        let rows = run_query(table, sql).await?;
+        render_query_result(&rows, limit, fmt)?;
+        return Ok(());
+    }
+
+    let Some(t) = inspect_type else {
+        anyhow::bail!("either a metadata table positional argument or --query/-q is required");
+    };
+
+    let metadata = table.metadata();
+    match t {
+        MetadataTable::Snapshots => render_typed(snapshots::extract(metadata), limit, fmt),
+        MetadataTable::History => render_typed(history::extract(metadata), limit, fmt),
+        MetadataTable::MetadataLog => render_typed(metadata_log::extract(metadata), limit, fmt),
+        MetadataTable::Refs => render_typed(refs::extract(metadata), limit, fmt),
+        MetadataTable::Manifests => {
+            render_typed(manifests::current(table, snapshot_id).await?, limit, fmt)
+        }
+        MetadataTable::AllManifests => render_typed(manifests::all(table).await?, limit, fmt),
+        MetadataTable::Entries => {
+            render_typed(entries::current(table, snapshot_id).await?, limit, fmt)
+        }
+        MetadataTable::AllEntries => render_typed(entries::all(table).await?, limit, fmt),
+        MetadataTable::Files => render_typed(files::alive(table, snapshot_id).await?, limit, fmt),
+        MetadataTable::DataFiles => {
+            render_typed(files::data(table, snapshot_id).await?, limit, fmt)
+        }
+        MetadataTable::DeleteFiles => {
+            render_typed(files::delete(table, snapshot_id).await?, limit, fmt)
+        }
+        MetadataTable::AllDataFiles => render_typed(files::all_data(table).await?, limit, fmt),
+        MetadataTable::AllDeleteFiles => render_typed(files::all_delete(table).await?, limit, fmt),
+        MetadataTable::Partitions => {
+            render_typed(partitions::extract(table, snapshot_id).await?, limit, fmt)
+        }
+    }
+}
+
+fn render_typed<T: Serialize + Tabular>(
+    rows: Vec<T>,
+    limit: Option<usize>,
+    fmt: OutputFormat,
+) -> Result<()> {
+    let rows = match limit {
+        Some(n) => rows.into_iter().take(n).collect(),
+        None => rows,
+    };
+    render_rows(&rows, fmt)
+}
+
+pub fn resolve_snapshot(
+    metadata: &TableMetadata,
+    snapshot_id: Option<i64>,
+) -> Result<&SnapshotRef> {
+    match snapshot_id {
+        Some(id) => metadata
+            .snapshot_by_id(id)
+            .ok_or_else(|| anyhow::anyhow!("snapshot {id} not found")),
+        None => metadata
+            .current_snapshot()
+            .ok_or_else(|| anyhow::anyhow!("table has no current snapshot")),
+    }
+}
+
+pub(super) fn partition_strings(s: &iceberg::spec::Struct) -> Vec<String> {
+    s.fields()
+        .iter()
+        .map(|f| match f {
+            Some(lit) => format!("{lit:?}"),
+            None => "null".to_string(),
+        })
+        .collect()
+}
+
+pub(super) async fn load_entries_for_snapshot(
+    table: &Table,
+    metadata: &TableMetadata,
+    snapshot: &SnapshotRef,
+) -> Result<Vec<ManifestEntryRef>> {
+    let manifest_list = snapshot
+        .load_manifest_list(table.file_io(), metadata)
+        .await?;
+    let futs = manifest_list
+        .entries()
+        .iter()
+        .map(|mf| mf.load_manifest(table.file_io()));
+    let manifests = try_join_all(futs).await?;
+    Ok(manifests
+        .into_iter()
+        .flat_map(|m| m.into_parts().0)
+        .collect())
+}
+
+pub(super) async fn load_alive_entries(
+    table: &Table,
+    metadata: &TableMetadata,
+    snapshot: &SnapshotRef,
+) -> Result<Vec<ManifestEntryRef>> {
+    let mut entries = load_entries_for_snapshot(table, metadata, snapshot).await?;
+    entries.retain(|e| e.is_alive());
+    Ok(entries)
+}
+
+async fn run_query(table: &Table, sql: &str) -> Result<Vec<serde_json::Value>> {
+    let sql = sql.trim_end_matches(';').trim();
+    let metadata = table.metadata();
+    let dir = tempfile::tempdir()?;
+    let conn = duckdb::Connection::open_in_memory()?;
+    let sql_lower = sql.to_lowercase();
+    let has_snapshot = metadata.current_snapshot().is_some();
+
+    for &kind in MetadataTable::ALL {
+        if !sql_lower.contains(kind.sql_name()) {
+            continue;
+        }
+        if kind.requires_snapshot() && !has_snapshot {
+            continue;
+        }
+        extract_and_write(kind, table, &conn, &dir).await?;
+    }
+
+    let result_path = dir.path().join("_result.json");
+    let export_sql = format!(
+        "COPY ({sql}) TO '{}' (FORMAT JSON, ARRAY TRUE)",
+        result_path.display()
+    );
+    conn.execute_batch(&export_sql)?;
+    let result_json = std::fs::read_to_string(&result_path)?;
+    Ok(serde_json::from_str(&result_json)?)
+}
+
+async fn extract_and_write(
+    kind: MetadataTable,
+    table: &Table,
+    conn: &duckdb::Connection,
+    dir: &tempfile::TempDir,
+) -> Result<()> {
+    let metadata = table.metadata();
+    let name = kind.sql_name();
+    match kind {
+        MetadataTable::Snapshots => write_table(conn, dir, name, &snapshots::extract(metadata))?,
+        MetadataTable::History => write_table(conn, dir, name, &history::extract(metadata))?,
+        MetadataTable::MetadataLog => {
+            write_table(conn, dir, name, &metadata_log::extract(metadata))?;
+        }
+        MetadataTable::Refs => write_table(conn, dir, name, &refs::extract(metadata))?,
+        MetadataTable::Manifests => {
+            let rows = manifests::current(table, None).await.unwrap_or_default();
+            write_table(conn, dir, name, &rows)?;
+        }
+        MetadataTable::AllManifests => {
+            let rows = manifests::all(table).await.unwrap_or_default();
+            write_table(conn, dir, name, &rows)?;
+        }
+        MetadataTable::Entries => {
+            let rows = entries::current(table, None).await.unwrap_or_default();
+            write_table(conn, dir, name, &rows)?;
+        }
+        MetadataTable::AllEntries => {
+            let rows = entries::all(table).await.unwrap_or_default();
+            write_table(conn, dir, name, &rows)?;
+        }
+        MetadataTable::Files => {
+            let rows = files::alive(table, None).await.unwrap_or_default();
+            write_table(conn, dir, name, &rows)?;
+        }
+        MetadataTable::DataFiles => {
+            let rows = files::data(table, None).await.unwrap_or_default();
+            write_table(conn, dir, name, &rows)?;
+        }
+        MetadataTable::DeleteFiles => {
+            let rows = files::delete(table, None).await.unwrap_or_default();
+            write_table(conn, dir, name, &rows)?;
+        }
+        MetadataTable::AllDataFiles => {
+            let rows = files::all_data(table).await.unwrap_or_default();
+            write_table(conn, dir, name, &rows)?;
+        }
+        MetadataTable::AllDeleteFiles => {
+            let rows = files::all_delete(table).await.unwrap_or_default();
+            write_table(conn, dir, name, &rows)?;
+        }
+        MetadataTable::Partitions => {
+            let rows = partitions::extract(table, None).await.unwrap_or_default();
+            write_table(conn, dir, name, &rows)?;
+        }
+    }
+    Ok(())
+}
+
+fn write_table<T: Serialize>(
+    conn: &duckdb::Connection,
+    dir: &tempfile::TempDir,
+    name: &str,
+    rows: &[T],
+) -> Result<()> {
+    if rows.is_empty() {
+        return Ok(());
+    }
+    let ndjson: String = rows
+        .iter()
+        .map(|r| serde_json::to_string(r).unwrap_or_default())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let path = dir.path().join(format!("{name}.ndjson"));
+    std::fs::write(&path, ndjson)?;
+    conn.execute_batch(&format!(
+        "CREATE TABLE {name} AS SELECT * FROM read_json_auto('{}')",
+        path.display()
+    ))?;
+    Ok(())
+}
+
+fn render_query_result(
+    rows: &[serde_json::Value],
+    limit: Option<usize>,
+    fmt: OutputFormat,
+) -> Result<()> {
+    let rows: Vec<&serde_json::Value> = match limit {
+        Some(n) => rows.iter().take(n).collect(),
+        None => rows.iter().collect(),
+    };
+
+    match fmt {
+        OutputFormat::Json => {
+            println!("{}", serde_json::to_string(&rows)?);
+        }
+        OutputFormat::Text => print_query_table(&rows),
+    }
+    Ok(())
+}
+
+fn print_query_table(rows: &[&serde_json::Value]) {
+    if rows.is_empty() {
+        return;
+    }
+    let serde_json::Value::Object(first) = rows[0] else {
+        for row in rows {
+            println!("{row}");
+        }
+        return;
+    };
+    let keys: Vec<&String> = first.keys().collect();
+
+    let displayed: Vec<Vec<String>> = rows
+        .iter()
+        .map(|row| {
+            keys.iter()
+                .map(|k| {
+                    if let serde_json::Value::Object(m) = row {
+                        format_value(m.get(*k))
+                    } else {
+                        String::new()
+                    }
+                })
+                .collect()
+        })
+        .collect();
+
+    let mut widths: Vec<usize> = keys.iter().map(|k| k.len()).collect();
+    for row in &displayed {
+        for (i, cell) in row.iter().enumerate() {
+            widths[i] = widths[i].max(cell.len());
+        }
+    }
+
+    let numeric: Vec<bool> = (0..keys.len())
+        .map(|c| {
+            rows.iter().all(|row| {
+                matches!(
+                    row.as_object().and_then(|m| m.get(keys[c])),
+                    Some(serde_json::Value::Number(_) | serde_json::Value::Null) | None
+                )
+            })
+        })
+        .collect();
+
+    let render_cell = |i: usize, s: &str| {
+        if numeric[i] {
+            format!("{s:>width$}", width = widths[i])
+        } else {
+            format!("{s:<width$}", width = widths[i])
+        }
+    };
+
+    let header: Vec<String> = keys
+        .iter()
+        .enumerate()
+        .map(|(i, k)| render_cell(i, k))
+        .collect();
+    println!("{}", header.join("  "));
+
+    for row in &displayed {
+        let cells: Vec<String> = row
+            .iter()
+            .enumerate()
+            .map(|(i, c)| render_cell(i, c))
+            .collect();
+        println!("{}", cells.join("  "));
+    }
+}
+
+fn format_value(v: Option<&serde_json::Value>) -> String {
+    match v {
+        None | Some(serde_json::Value::Null) => String::new(),
+        Some(serde_json::Value::String(s)) => s.clone(),
+        Some(serde_json::Value::Number(n)) => n.to_string(),
+        Some(serde_json::Value::Bool(b)) => b.to_string(),
+        Some(other) => other.to_string(),
+    }
+}

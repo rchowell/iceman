@@ -27,20 +27,20 @@ SELECT * FROM my_catalog.db.table.history;
 
 ## Metadata Table Inventory
 
-| Table | Scope | Primary Use |
-|---|---|---|
-| `history` | current lineage | Snapshot ancestry, rollback detection |
-| `metadata_log_entries` | all metadata files | Metadata file evolution |
-| `snapshots` | all snapshots | Snapshot inspection, time travel |
-| `entries` | all file ops across all snapshots | Full audit trail |
-| `files` | current snapshot | Active data & delete file stats |
-| `manifests` | current snapshot | Current manifest state |
-| `partitions` | current snapshot | Partition-level stats |
-| `all_data_files` | all snapshots | Cross-snapshot data file tracking |
-| `all_delete_files` | all snapshots | Cross-snapshot delete file tracking |
-| `all_entries` | all snapshots | All file ops (data + deletes) |
-| `all_manifests` | all snapshots | Cross-snapshot manifest tracking |
-| `refs` | current | Branches and tags |
+| Table                  | Scope                             | Primary Use                           |
+|------------------------|-----------------------------------|---------------------------------------|
+| `history`              | current lineage                   | Snapshot ancestry, rollback detection |
+| `metadata_log_entries` | all metadata files                | Metadata file evolution               |
+| `snapshots`            | all snapshots                     | Snapshot inspection, time travel      |
+| `entries`              | all file ops across all snapshots | Full audit trail                      |
+| `files`                | current snapshot                  | Active data & delete file stats       |
+| `manifests`            | current snapshot                  | Current manifest state                |
+| `partitions`           | current snapshot                  | Partition-level stats                 |
+| `all_data_files`       | all snapshots                     | Cross-snapshot data file tracking     |
+| `all_delete_files`     | all snapshots                     | Cross-snapshot delete file tracking   |
+| `all_entries`          | all snapshots                     | All file ops (data + deletes)         |
+| `all_manifests`        | all snapshots                     | Cross-snapshot manifest tracking      |
+| `refs`                 | current                           | Branches and tags                     |
 
 **Scoping note:** Tables without the `all_` prefix reflect the **current snapshot** only.
 `all_*` variants may return multiple rows per file (one per snapshot where the file was valid).
@@ -70,18 +70,18 @@ SELECT * FROM my_catalog.db.table.history;
 
 ## Status Codes (entries / all_entries)
 
-| Value | Meaning |
-|---|---|
-| 0 | Existing (unchanged in this snapshot) |
-| 1 | Added |
-| 2 | Deleted |
+| Value | Meaning                               |
+|-------|---------------------------------------|
+| 0     | Existing (unchanged in this snapshot) |
+| 1     | Added                                 |
+| 2     | Deleted                               |
 
 ## Content Type Codes (manifests / all_manifests)
 
-| Value | Meaning |
-|---|---|
-| 0 | Tracks data files |
-| 1 | Tracks delete files |
+| Value | Meaning             |
+|-------|---------------------|
+| 0     | Tracks data files   |
+| 1     | Tracks delete files |
 
 ## Reference Files
 
