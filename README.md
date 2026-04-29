@@ -2,12 +2,7 @@
 
 An Apache Iceberg CLI built in Rust, designed for AI agents.
 
-**Binaries**
-
-- **`iceman`** - experimental CLI
-- **`pyiceman`** - drop-in pyiceberg CLI replacement
-
-Both are powered by [iceberg-rust](https://github.com/apache/iceberg-rust).
+Powered by [iceberg-rust](https://github.com/apache/iceberg-rust).
 
 ## Install
 
@@ -34,22 +29,6 @@ type = "rest"
 uri = "http://localhost:8181"
 warehouse = "my_warehouse"
 s3.endpoint = "http://localhost:9000"
-```
-
-### pyiceman
-
-Reads your existing `.pyiceberg.yaml` (searched in `$PYICEBERG_HOME/`, `~/`, `./`):
-
-```sh
-pyiceman config show       # print resolved config
-```
-
-Supports `PYICEBERG_*` environment variables:
-
-```sh
-export PYICEBERG_CATALOG__DEFAULT__URI=http://localhost:8181
-export PYICEBERG_CATALOG__DEFAULT__S3__ENDPOINT=http://localhost:9000
-pyiceman config show
 ```
 
 ## Usage

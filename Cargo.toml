@@ -8,10 +8,6 @@ license = "Apache-2.0"
 name = "iceman"
 path = "src/bin/iceman.rs"
 
-[[bin]]
-name = "pyiceman"
-path = "src/bin/pyiceman.rs"
-
 [dependencies]
 anyhow = "1"
 async-trait = "0.1"
@@ -43,5 +39,4 @@ iceberg-catalog-sql = { path = "../iceberg-rust/crates/catalog/sql" }
 serde_json = "1"
 serde_yaml = "0.9"
 sqlx = { version = "0.8", features = ["any", "sqlite", "runtime-tokio", "tls-rustls", "migrate"], default-features = false }
-tempfile = "3"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

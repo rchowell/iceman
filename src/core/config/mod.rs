@@ -1,5 +1,4 @@
 pub mod iceman;
-pub mod pyiceberg;
 
 use std::collections::HashMap;
 
