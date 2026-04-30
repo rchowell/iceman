@@ -7,7 +7,10 @@ pub mod partitions;
 pub mod refs;
 pub mod snapshots;
 
-use anyhow::Result;
+use std::io::Write;
+use std::process::{Command, Stdio};
+
+use anyhow::{Context, Result};
 use futures::future::try_join_all;
 use iceberg::spec::{ManifestEntryRef, SnapshotRef, TableMetadata};
 use iceberg::table::Table;
@@ -151,10 +154,10 @@ async fn run_query(table: &Table, sql: &str) -> Result<Vec<serde_json::Value>> {
     let sql = sql.trim_end_matches(';').trim();
     let metadata = table.metadata();
     let dir = tempfile::tempdir()?;
-    let conn = duckdb::Connection::open_in_memory()?;
     let sql_lower = sql.to_lowercase();
     let has_snapshot = metadata.current_snapshot().is_some();
 
+    let mut create_stmts = Vec::new();
     for &kind in MetadataTable::ALL {
         if !sql_lower.contains(kind.sql_name()) {
             continue;
@@ -162,86 +165,124 @@ async fn run_query(table: &Table, sql: &str) -> Result<Vec<serde_json::Value>> {
         if kind.requires_snapshot() && !has_snapshot {
             continue;
         }
-        extract_and_write(kind, table, &conn, &dir).await?;
+        if let Some(stmt) = extract_and_write(kind, table, &dir).await? {
+            create_stmts.push(stmt);
+        }
     }
 
     let result_path = dir.path().join("_result.json");
-    let export_sql = format!(
-        "COPY ({sql}) TO '{}' (FORMAT JSON, ARRAY TRUE)",
+    let mut script = String::new();
+    for stmt in &create_stmts {
+        script.push_str(stmt);
+        script.push_str(";\n");
+    }
+    script.push_str(&format!(
+        "COPY ({sql}) TO '{}' (FORMAT JSON, ARRAY TRUE);\n",
         result_path.display()
-    );
-    conn.execute_batch(&export_sql)?;
-    let result_json = std::fs::read_to_string(&result_path)?;
+    ));
+
+    run_duckdb(&script)?;
+
+    let result_json = std::fs::read_to_string(&result_path)
+        .context("duckdb produced no result file; check the SQL")?;
     Ok(serde_json::from_str(&result_json)?)
+}
+
+fn run_duckdb(script: &str) -> Result<()> {
+    let mut child = Command::new("duckdb")
+        .arg("-bail")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                anyhow::anyhow!(
+                    "the 'duckdb' CLI is required for -q/--query but was not found on PATH. \
+                     Install it: https://duckdb.org/docs/installation/ \
+                     (e.g. 'brew install duckdb' on macOS)."
+                )
+            } else {
+                anyhow::Error::new(e).context("failed to spawn duckdb")
+            }
+        })?;
+
+    {
+        let mut stdin = child.stdin.take().expect("stdin piped");
+        stdin.write_all(script.as_bytes())?;
+    }
+
+    let output = child.wait_with_output()?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("duckdb failed: {}", stderr.trim());
+    }
+    Ok(())
 }
 
 async fn extract_and_write(
     kind: MetadataTable,
     table: &Table,
-    conn: &duckdb::Connection,
     dir: &tempfile::TempDir,
-) -> Result<()> {
+) -> Result<Option<String>> {
     let metadata = table.metadata();
     let name = kind.sql_name();
-    match kind {
-        MetadataTable::Snapshots => write_table(conn, dir, name, &snapshots::extract(metadata))?,
-        MetadataTable::History => write_table(conn, dir, name, &history::extract(metadata))?,
-        MetadataTable::MetadataLog => {
-            write_table(conn, dir, name, &metadata_log::extract(metadata))?;
-        }
-        MetadataTable::Refs => write_table(conn, dir, name, &refs::extract(metadata))?,
+    let stmt = match kind {
+        MetadataTable::Snapshots => write_table(dir, name, &snapshots::extract(metadata))?,
+        MetadataTable::History => write_table(dir, name, &history::extract(metadata))?,
+        MetadataTable::MetadataLog => write_table(dir, name, &metadata_log::extract(metadata))?,
+        MetadataTable::Refs => write_table(dir, name, &refs::extract(metadata))?,
         MetadataTable::Manifests => {
             let rows = manifests::current(table, None).await.unwrap_or_default();
-            write_table(conn, dir, name, &rows)?;
+            write_table(dir, name, &rows)?
         }
         MetadataTable::AllManifests => {
             let rows = manifests::all(table).await.unwrap_or_default();
-            write_table(conn, dir, name, &rows)?;
+            write_table(dir, name, &rows)?
         }
         MetadataTable::Entries => {
             let rows = entries::current(table, None).await.unwrap_or_default();
-            write_table(conn, dir, name, &rows)?;
+            write_table(dir, name, &rows)?
         }
         MetadataTable::AllEntries => {
             let rows = entries::all(table).await.unwrap_or_default();
-            write_table(conn, dir, name, &rows)?;
+            write_table(dir, name, &rows)?
         }
         MetadataTable::Files => {
             let rows = files::alive(table, None).await.unwrap_or_default();
-            write_table(conn, dir, name, &rows)?;
+            write_table(dir, name, &rows)?
         }
         MetadataTable::DataFiles => {
             let rows = files::data(table, None).await.unwrap_or_default();
-            write_table(conn, dir, name, &rows)?;
+            write_table(dir, name, &rows)?
         }
         MetadataTable::DeleteFiles => {
             let rows = files::delete(table, None).await.unwrap_or_default();
-            write_table(conn, dir, name, &rows)?;
+            write_table(dir, name, &rows)?
         }
         MetadataTable::AllDataFiles => {
             let rows = files::all_data(table).await.unwrap_or_default();
-            write_table(conn, dir, name, &rows)?;
+            write_table(dir, name, &rows)?
         }
         MetadataTable::AllDeleteFiles => {
             let rows = files::all_delete(table).await.unwrap_or_default();
-            write_table(conn, dir, name, &rows)?;
+            write_table(dir, name, &rows)?
         }
         MetadataTable::Partitions => {
             let rows = partitions::extract(table, None).await.unwrap_or_default();
-            write_table(conn, dir, name, &rows)?;
+            write_table(dir, name, &rows)?
         }
-    }
-    Ok(())
+    };
+    Ok(stmt)
 }
 
 fn write_table<T: Serialize>(
-    conn: &duckdb::Connection,
     dir: &tempfile::TempDir,
     name: &str,
     rows: &[T],
-) -> Result<()> {
+) -> Result<Option<String>> {
     if rows.is_empty() {
-        return Ok(());
+        return Ok(None);
     }
     let ndjson: String = rows
         .iter()
@@ -250,11 +291,10 @@ fn write_table<T: Serialize>(
         .join("\n");
     let path = dir.path().join(format!("{name}.ndjson"));
     std::fs::write(&path, ndjson)?;
-    conn.execute_batch(&format!(
+    Ok(Some(format!(
         "CREATE TABLE {name} AS SELECT * FROM read_json_auto('{}')",
         path.display()
-    ))?;
-    Ok(())
+    )))
 }
 
 fn render_query_result(

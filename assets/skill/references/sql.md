@@ -1,7 +1,9 @@
 # SQL over iceman metadata views
 
-`iceman inspect <table> -q "<sql>"` materializes Iceberg metadata into DuckDB
-views and runs your SQL against them. This file documents the views, exact
+`iceman inspect <table> -q "<sql>"` materializes Iceberg metadata into views
+inside a `duckdb` CLI subprocess and runs your SQL against them. Requires
+`duckdb` on PATH (`brew install duckdb`, or see
+https://duckdb.org/docs/installation/). This file documents the views, exact
 column names, key codes, and ready-to-run queries.
 
 ## How materialization works
@@ -14,7 +16,8 @@ metadata, writes NDJSON to a temp dir, and `CREATE TABLE`s it via
   FROM snapshots)` is fine because `snapshots` still appears in the text.
 - Snapshot-scoped views (`manifests`, `entries`, `files`, etc.) are skipped if
   the table has no current snapshot - your query will see them as missing.
-- Each query starts from a fresh in-memory DuckDB; no cross-query state.
+- Each query starts from a fresh `duckdb` subprocess (in-memory); no
+  cross-query state.
 
 ## Views
 

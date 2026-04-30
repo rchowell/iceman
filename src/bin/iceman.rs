@@ -2,7 +2,7 @@ use anyhow::Result;
 use clap::Parser;
 
 use iceman::catalog::resolve_catalog;
-use iceman::cli::{Command, IcemanCli, Identifier, SkillAction, VERSION};
+use iceman::cli::{Command, EntityType, IcemanCli, Identifier, SkillAction, VERSION};
 use iceman::commands::{describe, inspect, list, skill};
 use iceman::render::{RenderOpts, render_one, render_rows};
 
@@ -53,6 +53,10 @@ async fn main() -> Result<()> {
         } => {
             let catalog = resolve_catalog(&cli).await?;
             let ident = Identifier::parse(identifier);
+            if table.is_none() && query.is_none() {
+                let described = describe::run(catalog.as_ref(), &ident, &EntityType::Table).await?;
+                return render_one(&described, cli.output, RenderOpts::default());
+            }
             let loaded = catalog.load_table(&ident.as_table()?).await?;
             inspect::run(
                 &loaded,

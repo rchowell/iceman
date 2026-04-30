@@ -78,7 +78,7 @@ exclusive with the positional metadata table.
 
 | Flag                   | Purpose                                                |
 |------------------------|--------------------------------------------------------|
-| `-q, --query SQL`      | DuckDB SQL over the metadata views.                    |
+| `-q, --query SQL`      | SQL piped to the `duckdb` CLI over the metadata views (requires duckdb on PATH). |
 | `--snapshot-id N`      | Use snapshot `N` instead of current (typed mode only). |
 | `--limit N`            | Cap displayed rows.                                    |
 | `-v, --verbose`        | Show all columns. Default is a terse subset chosen for at-a-glance reading. |

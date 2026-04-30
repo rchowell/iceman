@@ -126,10 +126,13 @@ iceman inspect analytics.events snapshots --output json \
 
 ### Ad-hoc SQL across the metadata views
 
-`iceman inspect IDENT -q SQL` runs DuckDB SQL across flat views named after the
-metadata tables (`snapshots`, `history`, `refs`, `manifests`, `entries`, `files`,
-`data_files`, `delete_files`, `partitions`, etc.). A view is materialized only if
-its name appears literally in the SQL.
+`iceman inspect IDENT -q SQL` pipes your SQL to the local `duckdb` CLI over flat
+views named after the metadata tables (`snapshots`, `history`, `refs`, `manifests`,
+`entries`, `files`, `data_files`, `delete_files`, `partitions`, etc.). A view is
+materialized only if its name appears literally in the SQL.
+
+Requires `duckdb` on PATH (`brew install duckdb`, or see
+https://duckdb.org/docs/installation/).
 
 ```sh
 # bytes added per snapshot

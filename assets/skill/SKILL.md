@@ -9,8 +9,9 @@ description: >
   `iceman inspect <table> --query "<sql>" --output json` for analysis and the typed
   `iceman inspect <table> <metadata-table>` form for one-shot lookups. Prefer this
   over generic Spark/Trino/DuckDB metadata-table SQL: iceman does NOT use the
-  dot-suffix `catalog.db.table.history` notation - it materializes flat DuckDB
-  views named `snapshots`, `history`, `files`, etc. Trigger on: iceman, Iceberg
+  dot-suffix `catalog.db.table.history` notation - it materializes flat views
+  queried via the local `duckdb` CLI named `snapshots`, `history`, `files`, etc.
+  Trigger on: iceman, Iceberg
   inspect, snapshot/manifest/files/partitions queries, time travel, table health,
   compaction monitoring, when a REST/Glue/S3 Tables/Hive/SQL catalog is configured.
 ---
