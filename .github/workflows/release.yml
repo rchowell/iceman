@@ -1,0 +1,76 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          repository: rchowell/iceberg-rust
+          path: ${{ runner.workspace }}/iceberg-rust
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - run: cargo build --release
+
+      - name: Package
+        run: |
+          VERSION=${GITHUB_REF_NAME}
+          BINARY=iceman
+          TARGET=aarch64-apple-darwin
+          ARCHIVE=${BINARY}-${VERSION}-${TARGET}.tar.gz
+          tar -czf $ARCHIVE -C target/release $BINARY
+          SHA=$(shasum -a 256 $ARCHIVE | awk '{print $1}')
+          echo "ARCHIVE=$ARCHIVE" >> $GITHUB_ENV
+          echo "SHA256=$SHA" >> $GITHUB_ENV
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ARCHIVE }}
+
+      - run: echo "SHA256=${{ env.SHA256 }}" >> $GITHUB_OUTPUT
+        id: sha
+
+    outputs:
+      sha256: ${{ steps.sha.outputs.SHA256 }}
+
+  update-formula:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: rchowell/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+      - name: Update formula
+        env:
+          VERSION: ${{ github.ref_name }}
+          SHA256: ${{ needs.build.outputs.sha256 }}
+        run: |
+          # Remove 'v' prefix for formula version
+          VERSION_NO_V=${VERSION#v}
+
+          # Update version and sha256 in Formula/iceman.rb
+          sed -i "" "s/version \"[^\"]*\"/version \"$VERSION_NO_V\"/" Formula/iceman.rb
+          sed -i "" "s/sha256 \"<ARM_SHA256>\"/sha256 \"$SHA256\"/" Formula/iceman.rb
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/iceman.rb
+          git commit -m "iceman: update to ${{ github.ref_name }}"
+          git push
