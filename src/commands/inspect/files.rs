@@ -28,41 +28,54 @@ pub struct FileRow {
 }
 
 impl Tabular for FileRow {
-    fn headers() -> &'static [&'static str] {
-        &[
-            "content",
-            "file_path",
-            "file_format",
-            "partition",
-            "record_count",
-            "file_size_in_bytes",
-            "column_sizes",
-            "value_counts",
-            "null_value_counts",
-            "nan_value_counts",
-            "lower_bounds",
-            "upper_bounds",
-            "sort_order_id",
-        ]
+    fn headers(verbose: bool) -> &'static [&'static str] {
+        if verbose {
+            &[
+                "content",
+                "file_path",
+                "file_format",
+                "partition",
+                "record_count",
+                "file_size_in_bytes",
+                "column_sizes",
+                "value_counts",
+                "null_value_counts",
+                "nan_value_counts",
+                "lower_bounds",
+                "upper_bounds",
+                "sort_order_id",
+            ]
+        } else {
+            &["content", "record_count", "file_size_in_bytes", "file_path"]
+        }
     }
 
-    fn row(&self) -> Vec<Cell> {
-        vec![
-            Cell::Int(i64::from(self.content)),
-            Cell::Str(self.file_path.clone()),
-            Cell::Str(self.file_format.clone()),
-            partition_cell(self.partition.as_ref()),
-            Cell::UInt(self.record_count),
-            Cell::UInt(self.file_size_in_bytes),
-            json_cell(self.column_sizes.as_ref()),
-            json_cell(self.value_counts.as_ref()),
-            json_cell(self.null_value_counts.as_ref()),
-            json_cell(self.nan_value_counts.as_ref()),
-            json_cell(self.lower_bounds.as_ref()),
-            json_cell(self.upper_bounds.as_ref()),
-            self.sort_order_id
-                .map_or(Cell::Null, |n| Cell::Int(i64::from(n))),
-        ]
+    fn row(&self, verbose: bool) -> Vec<Cell> {
+        if verbose {
+            vec![
+                Cell::Int(i64::from(self.content)),
+                Cell::Str(self.file_path.clone()),
+                Cell::Str(self.file_format.clone()),
+                partition_cell(self.partition.as_ref()),
+                Cell::UInt(self.record_count),
+                Cell::UInt(self.file_size_in_bytes),
+                json_cell(self.column_sizes.as_ref()),
+                json_cell(self.value_counts.as_ref()),
+                json_cell(self.null_value_counts.as_ref()),
+                json_cell(self.nan_value_counts.as_ref()),
+                json_cell(self.lower_bounds.as_ref()),
+                json_cell(self.upper_bounds.as_ref()),
+                self.sort_order_id
+                    .map_or(Cell::Null, |n| Cell::Int(i64::from(n))),
+            ]
+        } else {
+            vec![
+                Cell::Int(i64::from(self.content)),
+                Cell::UInt(self.record_count),
+                Cell::UInt(self.file_size_in_bytes),
+                Cell::Str(self.file_path.clone()),
+            ]
+        }
     }
 }
 
@@ -85,7 +98,11 @@ fn datum_map(m: &HashMap<i32, Datum>) -> Option<BTreeMap<String, String>> {
     if m.is_empty() {
         None
     } else {
-        Some(m.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect())
+        Some(
+            m.iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+        )
     }
 }
 
@@ -96,7 +113,11 @@ fn from_entry(entry: &ManifestEntryRef) -> FileRow {
         content: df.content_type() as i32,
         file_path: df.file_path().to_string(),
         file_format: format!("{:?}", df.file_format()),
-        partition: if partition_v.is_empty() { None } else { Some(partition_v) },
+        partition: if partition_v.is_empty() {
+            None
+        } else {
+            Some(partition_v)
+        },
         record_count: df.record_count(),
         file_size_in_bytes: df.file_size_in_bytes(),
         column_sizes: u64_map(df.column_sizes()),
@@ -135,10 +156,7 @@ async fn alive_filtered(
     Ok(alive.iter().filter(|e| pred(e)).map(from_entry).collect())
 }
 
-async fn all_filtered(
-    table: &Table,
-    pred: fn(&ManifestEntryRef) -> bool,
-) -> Result<Vec<FileRow>> {
+async fn all_filtered(table: &Table, pred: fn(&ManifestEntryRef) -> bool) -> Result<Vec<FileRow>> {
     let metadata = table.metadata();
     let mut rows = Vec::new();
     for snapshot in metadata.snapshots() {

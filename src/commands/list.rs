@@ -30,11 +30,11 @@ pub struct ListEntry {
 }
 
 impl Tabular for ListEntry {
-    fn headers() -> &'static [&'static str] {
+    fn headers(_verbose: bool) -> &'static [&'static str] {
         &["type", "name"]
     }
 
-    fn row(&self) -> Vec<Cell> {
+    fn row(&self, _verbose: bool) -> Vec<Cell> {
         vec![
             Cell::Str(self.kind.as_str().to_string()),
             Cell::Str(self.name.clone()),

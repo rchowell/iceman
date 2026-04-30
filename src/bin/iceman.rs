@@ -2,9 +2,9 @@ use anyhow::Result;
 use clap::Parser;
 
 use iceman::catalog::resolve_catalog;
-use iceman::cli::{Command, Identifier, IcemanCli, SkillAction, VERSION};
+use iceman::cli::{Command, IcemanCli, Identifier, SkillAction, VERSION};
 use iceman::commands::{describe, inspect, list, skill};
-use iceman::render::{render_one, render_rows};
+use iceman::render::{RenderOpts, render_one, render_rows};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -30,7 +30,7 @@ async fn main() -> Result<()> {
         Command::List { ref pattern } => {
             let catalog = resolve_catalog(&cli).await?;
             let entries = list::run(catalog.as_ref(), pattern.as_deref()).await?;
-            render_rows(&entries, cli.output)
+            render_rows(&entries, cli.output, RenderOpts::default())
         }
 
         Command::Describe {
@@ -40,7 +40,7 @@ async fn main() -> Result<()> {
             let catalog = resolve_catalog(&cli).await?;
             let ident = Identifier::parse(identifier);
             let described = describe::run(catalog.as_ref(), &ident, entity).await?;
-            render_one(&described, cli.output)
+            render_one(&described, cli.output, RenderOpts::default())
         }
 
         Command::Inspect {
@@ -49,6 +49,7 @@ async fn main() -> Result<()> {
             ref query,
             snapshot_id,
             limit,
+            verbose,
         } => {
             let catalog = resolve_catalog(&cli).await?;
             let ident = Identifier::parse(identifier);
@@ -60,6 +61,7 @@ async fn main() -> Result<()> {
                 snapshot_id,
                 limit,
                 cli.output,
+                RenderOpts { verbose },
             )
             .await
         }

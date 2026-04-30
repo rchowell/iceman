@@ -14,11 +14,16 @@ pub struct HistoryRow {
 }
 
 impl Tabular for HistoryRow {
-    fn headers() -> &'static [&'static str] {
-        &["made_current_at", "snapshot_id", "parent_id", "is_current_ancestor"]
+    fn headers(_verbose: bool) -> &'static [&'static str] {
+        &[
+            "made_current_at",
+            "snapshot_id",
+            "parent_id",
+            "is_current_ancestor",
+        ]
     }
 
-    fn row(&self) -> Vec<Cell> {
+    fn row(&self, _verbose: bool) -> Vec<Cell> {
         vec![
             Cell::Int(self.made_current_at),
             Cell::Int(self.snapshot_id),

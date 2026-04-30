@@ -16,19 +16,35 @@ pub struct SnapshotRow {
 }
 
 impl Tabular for SnapshotRow {
-    fn headers() -> &'static [&'static str] {
-        &["snapshot_id", "parent_id", "timestamp_ms", "operation", "manifest_list", "summary"]
+    fn headers(verbose: bool) -> &'static [&'static str] {
+        if verbose {
+            &[
+                "snapshot_id",
+                "parent_id",
+                "timestamp_ms",
+                "operation",
+                "manifest_list",
+                "summary",
+            ]
+        } else {
+            &["snapshot_id", "parent_id", "timestamp_ms", "operation"]
+        }
     }
 
-    fn row(&self) -> Vec<Cell> {
-        vec![
+    fn row(&self, verbose: bool) -> Vec<Cell> {
+        let mut row = vec![
             Cell::Int(self.snapshot_id),
             self.parent_id.map_or(Cell::Null, Cell::Int),
             Cell::Int(self.timestamp_ms),
             Cell::Str(self.operation.clone()),
-            Cell::Str(self.manifest_list.clone()),
-            Cell::Str(serde_json::to_string(&self.summary).unwrap_or_default()),
-        ]
+        ];
+        if verbose {
+            row.push(Cell::Str(self.manifest_list.clone()));
+            row.push(Cell::Str(
+                serde_json::to_string(&self.summary).unwrap_or_default(),
+            ));
+        }
+        row
     }
 }
 

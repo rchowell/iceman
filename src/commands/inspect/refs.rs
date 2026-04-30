@@ -15,27 +15,36 @@ pub struct RefRow {
 }
 
 impl Tabular for RefRow {
-    fn headers() -> &'static [&'static str] {
-        &[
-            "name",
-            "type",
-            "snapshot_id",
-            "max_reference_age_in_ms",
-            "min_snapshots_to_keep",
-            "max_snapshot_age_in_ms",
-        ]
+    fn headers(verbose: bool) -> &'static [&'static str] {
+        if verbose {
+            &[
+                "name",
+                "type",
+                "snapshot_id",
+                "max_reference_age_in_ms",
+                "min_snapshots_to_keep",
+                "max_snapshot_age_in_ms",
+            ]
+        } else {
+            &["name", "type", "snapshot_id"]
+        }
     }
 
-    fn row(&self) -> Vec<Cell> {
-        vec![
+    fn row(&self, verbose: bool) -> Vec<Cell> {
+        let mut row = vec![
             Cell::Str(self.name.clone()),
             Cell::Str(self.ref_type.to_string()),
             Cell::Int(self.snapshot_id),
-            self.max_reference_age_in_ms.map_or(Cell::Null, Cell::Int),
-            self.min_snapshots_to_keep
-                .map_or(Cell::Null, |n| Cell::Int(i64::from(n))),
-            self.max_snapshot_age_in_ms.map_or(Cell::Null, Cell::Int),
-        ]
+        ];
+        if verbose {
+            row.push(self.max_reference_age_in_ms.map_or(Cell::Null, Cell::Int));
+            row.push(
+                self.min_snapshots_to_keep
+                    .map_or(Cell::Null, |n| Cell::Int(i64::from(n))),
+            );
+            row.push(self.max_snapshot_age_in_ms.map_or(Cell::Null, Cell::Int));
+        }
+        row
     }
 }
 
@@ -44,22 +53,20 @@ pub fn extract(metadata: &TableMetadata) -> Vec<RefRow> {
         .refs()
         .iter()
         .map(|(name, snap_ref)| {
-            let (ref_type, min_snapshots, max_snapshot_age, max_ref_age) =
-                match &snap_ref.retention {
-                    SnapshotRetention::Branch {
-                        min_snapshots_to_keep,
-                        max_snapshot_age_ms,
-                        max_ref_age_ms,
-                    } => (
-                        "branch",
-                        *min_snapshots_to_keep,
-                        *max_snapshot_age_ms,
-                        *max_ref_age_ms,
-                    ),
-                    SnapshotRetention::Tag { max_ref_age_ms } => {
-                        ("tag", None, None, *max_ref_age_ms)
-                    }
-                };
+            let (ref_type, min_snapshots, max_snapshot_age, max_ref_age) = match &snap_ref.retention
+            {
+                SnapshotRetention::Branch {
+                    min_snapshots_to_keep,
+                    max_snapshot_age_ms,
+                    max_ref_age_ms,
+                } => (
+                    "branch",
+                    *min_snapshots_to_keep,
+                    *max_snapshot_age_ms,
+                    *max_ref_age_ms,
+                ),
+                SnapshotRetention::Tag { max_ref_age_ms } => ("tag", None, None, *max_ref_age_ms),
+            };
             RefRow {
                 name: name.clone(),
                 ref_type,

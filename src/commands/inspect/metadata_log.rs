@@ -10,11 +10,11 @@ pub struct MetadataLogRow {
 }
 
 impl Tabular for MetadataLogRow {
-    fn headers() -> &'static [&'static str] {
+    fn headers(_verbose: bool) -> &'static [&'static str] {
         &["timestamp", "file"]
     }
 
-    fn row(&self) -> Vec<Cell> {
+    fn row(&self, _verbose: bool) -> Vec<Cell> {
         vec![Cell::Int(self.timestamp), Cell::Str(self.file.clone())]
     }
 }

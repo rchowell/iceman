@@ -27,38 +27,60 @@ pub struct ManifestRow {
 }
 
 impl Tabular for ManifestRow {
-    fn headers() -> &'static [&'static str] {
-        &[
-            "content",
-            "path",
-            "length",
-            "partition_spec_id",
-            "added_snapshot_id",
-            "added_data_files_count",
-            "existing_data_files_count",
-            "deleted_data_files_count",
-            "added_rows_count",
-            "existing_rows_count",
-            "deleted_rows_count",
-            "reference_snapshot_id",
-        ]
+    fn headers(verbose: bool) -> &'static [&'static str] {
+        if verbose {
+            &[
+                "content",
+                "path",
+                "length",
+                "partition_spec_id",
+                "added_snapshot_id",
+                "added_data_files_count",
+                "existing_data_files_count",
+                "deleted_data_files_count",
+                "added_rows_count",
+                "existing_rows_count",
+                "deleted_rows_count",
+                "reference_snapshot_id",
+            ]
+        } else {
+            &[
+                "path",
+                "length",
+                "partition_spec_id",
+                "added_data_files_count",
+                "existing_data_files_count",
+                "deleted_data_files_count",
+            ]
+        }
     }
 
-    fn row(&self) -> Vec<Cell> {
-        vec![
-            Cell::Int(i64::from(self.content)),
-            Cell::Str(self.path.clone()),
-            Cell::Int(self.length),
-            Cell::Int(i64::from(self.partition_spec_id)),
-            Cell::Int(self.added_snapshot_id),
-            opt_u32(self.added_data_files_count),
-            opt_u32(self.existing_data_files_count),
-            opt_u32(self.deleted_data_files_count),
-            self.added_rows_count.map_or(Cell::Null, Cell::UInt),
-            self.existing_rows_count.map_or(Cell::Null, Cell::UInt),
-            self.deleted_rows_count.map_or(Cell::Null, Cell::UInt),
-            self.reference_snapshot_id.map_or(Cell::Null, Cell::Int),
-        ]
+    fn row(&self, verbose: bool) -> Vec<Cell> {
+        if verbose {
+            vec![
+                Cell::Int(i64::from(self.content)),
+                Cell::Str(self.path.clone()),
+                Cell::Int(self.length),
+                Cell::Int(i64::from(self.partition_spec_id)),
+                Cell::Int(self.added_snapshot_id),
+                opt_u32(self.added_data_files_count),
+                opt_u32(self.existing_data_files_count),
+                opt_u32(self.deleted_data_files_count),
+                self.added_rows_count.map_or(Cell::Null, Cell::UInt),
+                self.existing_rows_count.map_or(Cell::Null, Cell::UInt),
+                self.deleted_rows_count.map_or(Cell::Null, Cell::UInt),
+                self.reference_snapshot_id.map_or(Cell::Null, Cell::Int),
+            ]
+        } else {
+            vec![
+                Cell::Str(self.path.clone()),
+                Cell::Int(self.length),
+                Cell::Int(i64::from(self.partition_spec_id)),
+                opt_u32(self.added_data_files_count),
+                opt_u32(self.existing_data_files_count),
+                opt_u32(self.deleted_data_files_count),
+            ]
+        }
     }
 }
 

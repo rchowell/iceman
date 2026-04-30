@@ -14,7 +14,7 @@ use iceberg::table::Table;
 use serde::Serialize;
 
 use crate::cli::{MetadataTable, OutputFormat};
-use crate::render::{Tabular, render_rows};
+use crate::render::{RenderOpts, Tabular, render_rows};
 
 pub async fn run(
     table: &Table,
@@ -23,10 +23,11 @@ pub async fn run(
     snapshot_id: Option<i64>,
     limit: Option<usize>,
     fmt: OutputFormat,
+    opts: RenderOpts,
 ) -> Result<()> {
     if let Some(sql) = query {
         let rows = run_query(table, sql).await?;
-        render_query_result(&rows, limit, fmt)?;
+        render_query_result(&rows, limit, fmt, opts)?;
         return Ok(());
     }
 
@@ -36,30 +37,47 @@ pub async fn run(
 
     let metadata = table.metadata();
     match t {
-        MetadataTable::Snapshots => render_typed(snapshots::extract(metadata), limit, fmt),
-        MetadataTable::History => render_typed(history::extract(metadata), limit, fmt),
-        MetadataTable::MetadataLog => render_typed(metadata_log::extract(metadata), limit, fmt),
-        MetadataTable::Refs => render_typed(refs::extract(metadata), limit, fmt),
-        MetadataTable::Manifests => {
-            render_typed(manifests::current(table, snapshot_id).await?, limit, fmt)
+        MetadataTable::Snapshots => render_typed(snapshots::extract(metadata), limit, fmt, opts),
+        MetadataTable::History => render_typed(history::extract(metadata), limit, fmt, opts),
+        MetadataTable::MetadataLog => {
+            render_typed(metadata_log::extract(metadata), limit, fmt, opts)
         }
-        MetadataTable::AllManifests => render_typed(manifests::all(table).await?, limit, fmt),
-        MetadataTable::Entries => {
-            render_typed(entries::current(table, snapshot_id).await?, limit, fmt)
+        MetadataTable::Refs => render_typed(refs::extract(metadata), limit, fmt, opts),
+        MetadataTable::Manifests => render_typed(
+            manifests::current(table, snapshot_id).await?,
+            limit,
+            fmt,
+            opts,
+        ),
+        MetadataTable::AllManifests => render_typed(manifests::all(table).await?, limit, fmt, opts),
+        MetadataTable::Entries => render_typed(
+            entries::current(table, snapshot_id).await?,
+            limit,
+            fmt,
+            opts,
+        ),
+        MetadataTable::AllEntries => render_typed(entries::all(table).await?, limit, fmt, opts),
+        MetadataTable::Files => {
+            render_typed(files::alive(table, snapshot_id).await?, limit, fmt, opts)
         }
-        MetadataTable::AllEntries => render_typed(entries::all(table).await?, limit, fmt),
-        MetadataTable::Files => render_typed(files::alive(table, snapshot_id).await?, limit, fmt),
         MetadataTable::DataFiles => {
-            render_typed(files::data(table, snapshot_id).await?, limit, fmt)
+            render_typed(files::data(table, snapshot_id).await?, limit, fmt, opts)
         }
         MetadataTable::DeleteFiles => {
-            render_typed(files::delete(table, snapshot_id).await?, limit, fmt)
+            render_typed(files::delete(table, snapshot_id).await?, limit, fmt, opts)
         }
-        MetadataTable::AllDataFiles => render_typed(files::all_data(table).await?, limit, fmt),
-        MetadataTable::AllDeleteFiles => render_typed(files::all_delete(table).await?, limit, fmt),
-        MetadataTable::Partitions => {
-            render_typed(partitions::extract(table, snapshot_id).await?, limit, fmt)
+        MetadataTable::AllDataFiles => {
+            render_typed(files::all_data(table).await?, limit, fmt, opts)
         }
+        MetadataTable::AllDeleteFiles => {
+            render_typed(files::all_delete(table).await?, limit, fmt, opts)
+        }
+        MetadataTable::Partitions => render_typed(
+            partitions::extract(table, snapshot_id).await?,
+            limit,
+            fmt,
+            opts,
+        ),
     }
 }
 
@@ -67,12 +85,13 @@ fn render_typed<T: Serialize + Tabular>(
     rows: Vec<T>,
     limit: Option<usize>,
     fmt: OutputFormat,
+    opts: RenderOpts,
 ) -> Result<()> {
     let rows = match limit {
         Some(n) => rows.into_iter().take(n).collect(),
         None => rows,
     };
-    render_rows(&rows, fmt)
+    render_rows(&rows, fmt, opts)
 }
 
 pub fn resolve_snapshot(
@@ -242,6 +261,7 @@ fn render_query_result(
     rows: &[serde_json::Value],
     limit: Option<usize>,
     fmt: OutputFormat,
+    opts: RenderOpts,
 ) -> Result<()> {
     let rows: Vec<&serde_json::Value> = match limit {
         Some(n) => rows.iter().take(n).collect(),
@@ -249,23 +269,20 @@ fn render_query_result(
     };
 
     match fmt {
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string(&rows)?);
-        }
-        OutputFormat::Text => print_query_table(&rows),
+        OutputFormat::Json => crate::render::render_jsonl_values(&rows),
+        OutputFormat::Text => print_query_table(&rows, opts),
     }
-    Ok(())
 }
 
-fn print_query_table(rows: &[&serde_json::Value]) {
+fn print_query_table(rows: &[&serde_json::Value], opts: RenderOpts) -> Result<()> {
     if rows.is_empty() {
-        return;
+        return Ok(());
     }
     let serde_json::Value::Object(first) = rows[0] else {
         for row in rows {
             println!("{row}");
         }
-        return;
+        return Ok(());
     };
     let keys: Vec<&String> = first.keys().collect();
 
@@ -284,13 +301,6 @@ fn print_query_table(rows: &[&serde_json::Value]) {
         })
         .collect();
 
-    let mut widths: Vec<usize> = keys.iter().map(|k| k.len()).collect();
-    for row in &displayed {
-        for (i, cell) in row.iter().enumerate() {
-            widths[i] = widths[i].max(cell.len());
-        }
-    }
-
     let numeric: Vec<bool> = (0..keys.len())
         .map(|c| {
             rows.iter().all(|row| {
@@ -302,29 +312,8 @@ fn print_query_table(rows: &[&serde_json::Value]) {
         })
         .collect();
 
-    let render_cell = |i: usize, s: &str| {
-        if numeric[i] {
-            format!("{s:>width$}", width = widths[i])
-        } else {
-            format!("{s:<width$}", width = widths[i])
-        }
-    };
-
-    let header: Vec<String> = keys
-        .iter()
-        .enumerate()
-        .map(|(i, k)| render_cell(i, k))
-        .collect();
-    println!("{}", header.join("  "));
-
-    for row in &displayed {
-        let cells: Vec<String> = row
-            .iter()
-            .enumerate()
-            .map(|(i, c)| render_cell(i, c))
-            .collect();
-        println!("{}", cells.join("  "));
-    }
+    let header_strs: Vec<&str> = keys.iter().map(|k| k.as_str()).collect();
+    crate::render::render_string_table(&header_strs, &displayed, &numeric, opts)
 }
 
 fn format_value(v: Option<&serde_json::Value>) -> String {

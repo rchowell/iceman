@@ -86,13 +86,29 @@ impl DisplayText for TableInfo {
                 .current_snapshot_timestamp_ms
                 .map(fmt_timestamp)
                 .unwrap_or_default();
-            writeln!(w, "snapshot:  {id} ({}, {ts_str})", self.current_snapshot_op)?;
+            writeln!(
+                w,
+                "snapshot:  {id} ({}, {ts_str})",
+                self.current_snapshot_op
+            )?;
         }
         writeln!(w, "history:   {} snapshots", self.snapshot_count)?;
 
         writeln!(w, "\nschema:")?;
-        let name_w = self.schema.iter().map(|f| f.name.len()).max().unwrap_or(4).max(4);
-        let type_w = self.schema.iter().map(|f| f.field_type.len()).max().unwrap_or(4).max(4);
+        let name_w = self
+            .schema
+            .iter()
+            .map(|f| f.name.len())
+            .max()
+            .unwrap_or(4)
+            .max(4);
+        let type_w = self
+            .schema
+            .iter()
+            .map(|f| f.field_type.len())
+            .max()
+            .unwrap_or(4)
+            .max(4);
         writeln!(
             w,
             "  {:>4}  {:<name_w$}  {:<type_w$}  required",
@@ -160,7 +176,10 @@ pub async fn run(
         EntityType::Namespace => {
             let ident = identifier.as_namespace()?;
             let ns = catalog.get_namespace(&ident).await?;
-            Ok(Described::Namespace(namespace_info(&ns, identifier.as_str())))
+            Ok(Described::Namespace(namespace_info(
+                &ns,
+                identifier.as_str(),
+            )))
         }
         EntityType::Any => {
             if identifier.parts().len() >= 2
@@ -171,7 +190,10 @@ pub async fn run(
             }
             let ident = identifier.as_namespace()?;
             let ns = catalog.get_namespace(&ident).await?;
-            Ok(Described::Namespace(namespace_info(&ns, identifier.as_str())))
+            Ok(Described::Namespace(namespace_info(
+                &ns,
+                identifier.as_str(),
+            )))
         }
     }
 }
@@ -275,4 +297,3 @@ fn fmt_timestamp(ms: i64) -> String {
         |dt: chrono::DateTime<chrono::Utc>| dt.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
     )
 }
-

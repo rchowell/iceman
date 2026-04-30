@@ -22,34 +22,56 @@ pub struct EntryRow {
 }
 
 impl Tabular for EntryRow {
-    fn headers() -> &'static [&'static str] {
-        &[
-            "status",
-            "snapshot_id",
-            "sequence_number",
-            "file_sequence_number",
-            "content",
-            "file_path",
-            "file_format",
-            "record_count",
-            "file_size_in_bytes",
-            "partition",
-        ]
+    fn headers(verbose: bool) -> &'static [&'static str] {
+        if verbose {
+            &[
+                "status",
+                "snapshot_id",
+                "sequence_number",
+                "file_sequence_number",
+                "content",
+                "file_path",
+                "file_format",
+                "record_count",
+                "file_size_in_bytes",
+                "partition",
+            ]
+        } else {
+            &[
+                "status",
+                "snapshot_id",
+                "content",
+                "file_path",
+                "record_count",
+                "file_size_in_bytes",
+            ]
+        }
     }
 
-    fn row(&self) -> Vec<Cell> {
-        vec![
-            Cell::Int(i64::from(self.status)),
-            self.snapshot_id.map_or(Cell::Null, Cell::Int),
-            self.sequence_number.map_or(Cell::Null, Cell::Int),
-            self.file_sequence_number.map_or(Cell::Null, Cell::Int),
-            Cell::Int(i64::from(self.content)),
-            Cell::Str(self.file_path.clone()),
-            Cell::Str(self.file_format.clone()),
-            Cell::UInt(self.record_count),
-            Cell::UInt(self.file_size_in_bytes),
-            partition_cell(self.partition.as_ref()),
-        ]
+    fn row(&self, verbose: bool) -> Vec<Cell> {
+        if verbose {
+            vec![
+                Cell::Int(i64::from(self.status)),
+                self.snapshot_id.map_or(Cell::Null, Cell::Int),
+                self.sequence_number.map_or(Cell::Null, Cell::Int),
+                self.file_sequence_number.map_or(Cell::Null, Cell::Int),
+                Cell::Int(i64::from(self.content)),
+                Cell::Str(self.file_path.clone()),
+                Cell::Str(self.file_format.clone()),
+                Cell::UInt(self.record_count),
+                Cell::UInt(self.file_size_in_bytes),
+                partition_cell(self.partition.as_ref()),
+            ]
+        } else {
+            vec![
+                Cell::Int(i64::from(self.status)),
+                self.snapshot_id.map_or(Cell::Null, Cell::Int),
+                Cell::Int(i64::from(self.content)),
+                Cell::Str(self.file_path.clone()),
+                Cell::UInt(self.record_count),
+                Cell::UInt(self.file_size_in_bytes),
+            ]
+        }
     }
 }
 

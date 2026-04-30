@@ -38,7 +38,6 @@ impl Identifier {
     }
 }
 
-
 /// Iceberg metadata tables.
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum MetadataTable {
@@ -139,9 +138,6 @@ pub struct IcemanCli {
     /// Catalog name from config
     #[arg(long, global = true)]
     pub catalog: Option<String>,
-    /// Verbose output
-    #[arg(long, short, global = true)]
-    pub verbose: bool,
     /// Output format
     #[arg(long, global = true, default_value = "text")]
     pub output: OutputFormat,
@@ -189,6 +185,9 @@ pub enum Command {
         /// Max rows to display
         #[arg(long)]
         limit: Option<usize>,
+        /// Show all columns (default: a terse subset)
+        #[arg(long, short = 'v')]
+        verbose: bool,
     },
     /// Manage Claude skills bundled with iceman
     Skill {

@@ -23,32 +23,50 @@ pub struct PartitionRow {
 }
 
 impl Tabular for PartitionRow {
-    fn headers() -> &'static [&'static str] {
-        &[
-            "partition",
-            "spec_id",
-            "record_count",
-            "file_count",
-            "total_data_file_size_in_bytes",
-            "position_delete_record_count",
-            "position_delete_file_count",
-            "equality_delete_record_count",
-            "equality_delete_file_count",
-        ]
+    fn headers(verbose: bool) -> &'static [&'static str] {
+        if verbose {
+            &[
+                "partition",
+                "spec_id",
+                "record_count",
+                "file_count",
+                "total_data_file_size_in_bytes",
+                "position_delete_record_count",
+                "position_delete_file_count",
+                "equality_delete_record_count",
+                "equality_delete_file_count",
+            ]
+        } else {
+            &[
+                "partition",
+                "file_count",
+                "record_count",
+                "total_data_file_size_in_bytes",
+            ]
+        }
     }
 
-    fn row(&self) -> Vec<Cell> {
-        vec![
-            Cell::Str(self.partition.clone()),
-            Cell::Int(i64::from(self.spec_id)),
-            Cell::UInt(self.record_count),
-            Cell::UInt(u64::from(self.file_count)),
-            Cell::UInt(self.total_data_file_size_in_bytes),
-            Cell::UInt(self.position_delete_record_count),
-            Cell::UInt(u64::from(self.position_delete_file_count)),
-            Cell::UInt(self.equality_delete_record_count),
-            Cell::UInt(u64::from(self.equality_delete_file_count)),
-        ]
+    fn row(&self, verbose: bool) -> Vec<Cell> {
+        if verbose {
+            vec![
+                Cell::Str(self.partition.clone()),
+                Cell::Int(i64::from(self.spec_id)),
+                Cell::UInt(self.record_count),
+                Cell::UInt(u64::from(self.file_count)),
+                Cell::UInt(self.total_data_file_size_in_bytes),
+                Cell::UInt(self.position_delete_record_count),
+                Cell::UInt(u64::from(self.position_delete_file_count)),
+                Cell::UInt(self.equality_delete_record_count),
+                Cell::UInt(u64::from(self.equality_delete_file_count)),
+            ]
+        } else {
+            vec![
+                Cell::Str(self.partition.clone()),
+                Cell::UInt(u64::from(self.file_count)),
+                Cell::UInt(self.record_count),
+                Cell::UInt(self.total_data_file_size_in_bytes),
+            ]
+        }
     }
 }
 

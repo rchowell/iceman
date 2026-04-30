@@ -5,10 +5,7 @@ use anyhow::{Context, Result, bail};
 const SKILL_NAME: &str = "iceman";
 
 const SKILL_FILES: &[(&str, &str)] = &[
-    (
-        "SKILL.md",
-        include_str!("../../assets/skill/SKILL.md"),
-    ),
+    ("SKILL.md", include_str!("../../assets/skill/SKILL.md")),
     (
         "references/commands.md",
         include_str!("../../assets/skill/references/commands.md"),
@@ -43,8 +40,7 @@ pub fn install(location: Option<&Path>, user: bool, force: bool) -> Result<()> {
 
     for (rel, contents) in SKILL_FILES {
         let path = target.join(rel);
-        std::fs::write(&path, contents)
-            .with_context(|| format!("writing {}", path.display()))?;
+        std::fs::write(&path, contents).with_context(|| format!("writing {}", path.display()))?;
         println!("wrote {}", path.display());
     }
 
@@ -96,7 +92,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         install(Some(dir.path()), false, false).unwrap();
 
-        let stale = dir.path().join("iceman").join("references").join("stale.md");
+        let stale = dir
+            .path()
+            .join("iceman")
+            .join("references")
+            .join("stale.md");
         std::fs::write(&stale, "delete me").unwrap();
         assert!(stale.exists());
 
