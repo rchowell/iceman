@@ -90,13 +90,31 @@ iceman inspect analytics.events -q \
   "SELECT count(*) AS n_files, sum(file_size_in_bytes) AS bytes FROM files"
 ```
 
+## Output format
+
+`--output text` (default) prints aligned ASCII (no Unicode borders).
+
+`--output json` prints a single JSON array of objects: `[{...}, {...}]`.
+No NDJSON, no envelope, no trailing newline beyond the array. Pipe straight
+to `jq` or parse with any JSON library.
+
+## Empty-snapshot behavior
+
+A table with no current snapshot still has metadata, but most views need a
+snapshot to materialize.
+
+| Snapshot required? | Metadata tables                                              |
+|--------------------|--------------------------------------------------------------|
+| No                 | `snapshots`, `history`, `metadata-log`, `refs`               |
+| Yes                | `manifests`, `all-manifests`, `entries`, `all-entries`, `files`, `data-files`, `delete-files`, `all-data-files`, `all-delete-files`, `partitions` |
+
+In SQL mode, snapshot-required views are simply skipped during materialization
+- the query sees them as missing tables and DuckDB raises a parse error.
+
 ## Exit behavior
 
 - Returns non-zero on any error (catalog load failure, table not found, SQL parse error).
 - `iceman list` on an empty catalog returns 0 with no rows.
-- `iceman inspect` on a table with no current snapshot fails for snapshot-scoped
-  metadata tables (`files`, `manifests`, `entries`, `partitions`, etc.) but succeeds
-  for `snapshots`, `history`, `metadata_log_entries`, and `refs`.
 
 ## `iceman skill install [LOCATION]`
 

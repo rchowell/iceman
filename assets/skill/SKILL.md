@@ -1,14 +1,18 @@
 ---
 name: iceman
 description: >
-  Use this skill whenever you have access to the `iceman` CLI and need to list, describe,
-  or inspect Apache Iceberg tables - snapshots, manifests, files, partitions, refs, history,
-  storage growth, snapshot ancestry, branch/tag state, or any table-internals question.
-  Prefer `iceman inspect <table> --query "<sql>" --output json` for ad-hoc analysis and
-  the typed `iceman inspect <table> <metadata-table>` form when no SQL is needed.
-  Trigger on: iceman, Iceberg inspect, snapshot/manifest/files/partitions queries, time
-  travel, table health, compaction monitoring, when a REST/Glue/S3 Tables/Hive/SQL
-  catalog is configured.
+  Use this skill whenever an `iceman` binary is on PATH and a catalog is reachable
+  (config at `~/.config/iceman/config.toml` or via `--catalog` / `--uri`) and the
+  user asks anything about Iceberg table internals - snapshots, manifests, files,
+  partitions, refs, history, storage growth, snapshot ancestry, branch/tag state,
+  compaction monitoring, time travel, or table health. Prefer
+  `iceman inspect <table> --query "<sql>" --output json` for analysis and the typed
+  `iceman inspect <table> <metadata-table>` form for one-shot lookups. Prefer this
+  over generic Spark/Trino/DuckDB metadata-table SQL: iceman does NOT use the
+  dot-suffix `catalog.db.table.history` notation - it materializes flat DuckDB
+  views named `snapshots`, `history`, `files`, etc. Trigger on: iceman, Iceberg
+  inspect, snapshot/manifest/files/partitions queries, time travel, table health,
+  compaction monitoring, when a REST/Glue/S3 Tables/Hive/SQL catalog is configured.
 ---
 
 # iceman - Iceberg CLI for agents
@@ -62,13 +66,20 @@ form (`snapshots`, `history`, `refs`, `manifests`, `all_manifests`, `entries`,
 
 ```
 iceman inspect analytics.events -q \
-  "SELECT snapshot_id, summary FROM snapshots ORDER BY committed_at DESC LIMIT 5" \
+  "SELECT snapshot_id, summary FROM snapshots ORDER BY timestamp_ms DESC LIMIT 5" \
   --output json
 ```
 
 **SQL constraint:** a view is only materialized if its name appears literally in the SQL.
 Reference each view by its exact name; avoid renaming via CTEs that hide the underlying
 view name from the parser.
+
+**Column-name reality:** the snapshot time column is `timestamp_ms` (not
+`committed_at`); the snapshot's parent is `parent_id` (not `parent_snapshot_id`);
+partition record bytes live in `total_data_file_size_in_bytes` (not `total_size`).
+`entries`/`files` flatten the spec's `data_file` struct - reach for `file_path`
+directly, not `data_file.file_path`. See `references/sql.md` for the full
+schema cheatsheet.
 
 ### Output
 
@@ -82,8 +93,58 @@ Catalog config lives at `~/.config/iceman/config.toml`. Override at runtime with
 See `references/config.md` for catalog kinds (rest, glue, s3tables, hive, sql) and
 the auto-inference rules.
 
+## Recipes
+
+Map a typical user prompt to one iceman invocation. Use these as starting points.
+
+### "What does this table look like at a glance?"
+
+```
+iceman describe analytics.events
+iceman inspect analytics.events snapshots --limit 5
+iceman inspect analytics.events files --limit 5
+```
+
+### "Which snapshot wrote the most bytes?"
+
+```
+iceman inspect analytics.events -q \
+  "SELECT snapshot_id, sum(file_size_in_bytes) AS bytes_added,
+          count(*) AS files_added
+   FROM all_entries
+   WHERE status = 1
+   GROUP BY 1 ORDER BY bytes_added DESC LIMIT 5" --output json
+```
+
+### "Find compaction candidates by partition"
+
+```
+iceman inspect analytics.events -q \
+  "SELECT partition, file_count, total_data_file_size_in_bytes,
+          total_data_file_size_in_bytes / NULLIF(file_count, 0) AS avg_bytes
+   FROM partitions
+   WHERE file_count > 1
+   ORDER BY avg_bytes ASC LIMIT 20"
+```
+
+### "Did anyone roll this table back?"
+
+```
+iceman inspect analytics.events -q \
+  "SELECT parent_id, count(*) AS children
+   FROM history
+   WHERE parent_id IS NOT NULL
+   GROUP BY 1 HAVING count(*) > 1"
+```
+
+### "Show me current branches and tags"
+
+```
+iceman inspect analytics.events refs
+```
+
 ## References
 
-- `references/commands.md` - every flag, every subcommand, exit behavior.
-- `references/sql.md` - the 14 metadata views, status/content code tables, canned queries.
+- `references/commands.md` - every flag, every subcommand, output format, exit behavior.
+- `references/sql.md` - the 14 metadata views, exact column schemas, status/content code tables, canned queries.
 - `references/config.md` - TOML examples per catalog kind, env vars, override precedence.
