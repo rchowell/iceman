@@ -172,7 +172,7 @@ The `iceman inspect` command accepts a `-q <SQL>` argument. When given,
 iceman will execute the SQL with `duckdb` against views named after
 the metadata tables. This requires `duckdb` on PATH (`brew install duckdb`).
 
-> DuckDB is not bundled because it makes 'iceman' 80MB vs. 8MB without.
+> DuckDB is not bundled because it makes 'iceman' 80MB vs. 10MB without.
 
 ```sh
 # bytes added per snapshot
