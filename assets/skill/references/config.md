@@ -28,23 +28,23 @@ warehouse = "/tmp/iceberg/warehouse"
 
 ## Supported catalog kinds
 
-| `type`     | Required keys                              | Notes                                     |
-|------------|--------------------------------------------|-------------------------------------------|
-| `rest`     | `uri`, often `warehouse`, `credential`     | OAuth/Bearer auth via `credential`.       |
-| `glue`     | (AWS env / profile)                        | Uses the default AWS credential chain.    |
-| `s3tables` | `warehouse` = table bucket ARN             | `warehouse` maps to `table_bucket_arn`.   |
-| `hive`     | `uri = thrift://host:port`                 | Hive Metastore over Thrift.               |
-| `sql`      | `uri = sqlite://...` or `postgresql://...` | JDBC-style catalog (SQLite or Postgres).  |
+| `type`     | Required keys                              | Notes                                    |
+|------------|--------------------------------------------|------------------------------------------|
+| `rest`     | `uri`, often `warehouse`, `credential`     | OAuth/Bearer auth via `credential`.      |
+| `glue`     | (AWS env / profile)                        | Uses the default AWS credential chain.   |
+| `s3tables` | `warehouse` = table bucket ARN             | `warehouse` maps to `table_bucket_arn`.  |
+| `hive`     | `uri = thrift://host:port`                 | Hive Metastore over Thrift.              |
+| `sql`      | `uri = sqlite://...` or `postgresql://...` | JDBC-style catalog (SQLite or Postgres). |
 
 ## Type inference
 
 If you omit `type`, iceman infers from the URI scheme (see `infer_catalog_type`):
 
-| URI prefix                      | Inferred type |
-|---------------------------------|---------------|
-| `http://` / `https://`          | `rest`        |
-| `thrift://`                     | `hive`        |
-| `sqlite:` / `postgresql:`       | `sql`         |
+| URI prefix                | Inferred type |
+|---------------------------|---------------|
+| `http://` / `https://`    | `rest`        |
+| `thrift://`               | `hive`        |
+| `sqlite:` / `postgresql:` | `sql`         |
 
 Other schemes require an explicit `type`.
 

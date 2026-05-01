@@ -32,12 +32,13 @@ or stream-process directly.
 If the user has an Iceberg catalog but no `iceman` binary on `PATH`, this skill does not
 apply - use the engine they already have (Spark, Trino, DuckDB).
 
-## Three commands
+## Core commands
 
 ```
 iceman list [PATTERN]                       # discover namespaces and tables
 iceman describe IDENT [--entity any|namespace|table]
 iceman inspect IDENT [METADATA_TABLE] [-q SQL] [--snapshot-id N] [--limit N] [-v]
+iceman info [TOPIC]                         # offline schema/concept reference (no catalog needed)
 ```
 
 `IDENT` is dot-separated (e.g. `analytics.events`, `db.schema.table`).
@@ -59,6 +60,26 @@ iceman inspect analytics.events snapshots
 iceman inspect analytics.events files --limit 20
 iceman inspect analytics.events entries --snapshot-id 5723145
 ```
+
+### Reference lookup (`iceman info`)
+
+`iceman info` prints schema/concept docs without touching a catalog. Use it when
+you need to recall column names, status codes, or the metadata-table inventory
+mid-task without loading `references/sql.md`.
+
+```
+iceman info                                 # list available topics
+iceman info partitions                      # schema for the partitions metadata table
+iceman info entries                         # entries / all_entries schema (incl. data_file struct)
+iceman info status-codes                    # 0=existing, 1=added, 2=deleted
+iceman info content-types                   # 0=data files, 1=delete files
+iceman info metadata                        # full inventory + task-to-table cheat sheet
+```
+
+Topics are case-insensitive and accept `-` or `_` interchangeably (`all_entries`,
+`all-entries`, and `entries` all resolve to the same section). `--output json`
+emits `{"topic","content"}` for scripted callers; the default text path is
+plain markdown.
 
 ### Inspection - SQL form (recommended for analysis)
 
@@ -112,15 +133,15 @@ when you need `column_sizes`, `lower_bounds`, snapshot `summary`, etc.). The SQL
 
 Both output modes are pipe-first by design. Reach for the right one:
 
-| Need                                  | Use this                                   |
-|---------------------------------------|--------------------------------------------|
-| One column → list of strings          | `--output json | jq -r '.field'`           |
-| Filter rows by a predicate            | `--output json | jq 'select(.foo > 100)'`  |
-| Pick by column index                  | TSV → `cut -f3`                            |
-| Sum / aggregate one column            | TSV → `awk -F'\t' 'NR>1 {s+=$N} END{...}'` |
-| Re-align TSV for visual reading       | TSV → `column -t -s$'\t'`                  |
-| Read a wide table without wrapping    | `\| less -S` (or `\| less -RSFX`)          |
-| Count rows                            | `--output json | jq -s 'length'` or `wc -l` on TSV minus 1 |
+| Need                               | Use this                                                   |
+|------------------------------------|------------------------------------------------------------|
+| One column → list of strings       | `--output json | jq -r '.field'`                           |
+| Filter rows by a predicate         | `--output json | jq 'select(.foo > 100)'`                  |
+| Pick by column index               | TSV → `cut -f3`                                            |
+| Sum / aggregate one column         | TSV → `awk -F'\t' 'NR>1 {s+=$N} END{...}'`                 |
+| Re-align TSV for visual reading    | TSV → `column -t -s$'\t'`                                  |
+| Read a wide table without wrapping | `\| less -S` (or `\| less -RSFX`)                          |
+| Count rows                         | `--output json | jq -s 'length'` or `wc -l` on TSV minus 1 |
 
 **Tabs and field counts.** TSV uses exactly one `\t` between columns. Two consecutive
 tabs would be parsed by `cut`/`awk` as an empty middle field, so iceman never emits
@@ -267,3 +288,6 @@ iceman inspect analytics.events files -v \
 - `references/commands.md` - every flag, every subcommand, output format, exit behavior.
 - `references/sql.md` - the 14 metadata views, exact column schemas, status/content code tables, canned queries.
 - `references/config.md` - TOML examples per catalog kind, env vars, override precedence.
+
+If you don't have these references loaded, `iceman info <topic>` prints the
+same metadata-table schemas straight from the binary (no catalog required).

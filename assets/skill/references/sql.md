@@ -23,22 +23,22 @@ metadata, writes NDJSON to a temp dir, and `CREATE TABLE`s it via
 
 Snake_case SQL names. The typed-mode equivalents in `commands.md` use kebab-case.
 
-| View                   | Scope                              | Use                                   |
-|------------------------|------------------------------------|---------------------------------------|
-| `snapshots`            | all snapshots                      | snapshot inspection, time travel      |
-| `history`              | current ref's lineage              | ancestry, rollback detection          |
-| `metadata_log_entries` | all metadata files                 | metadata file evolution               |
-| `refs`                 | current                            | branches and tags                     |
-| `manifests`            | current snapshot                   | current manifest state                |
-| `all_manifests`        | all snapshots                      | manifest churn / cross-snapshot       |
-| `entries`              | current snapshot                   | per-file ops in current snapshot      |
-| `all_entries`          | all snapshots                      | full audit trail                      |
-| `files`                | current snapshot, live             | data + delete files combined          |
-| `data_files`           | current snapshot, live             | data files only                       |
-| `delete_files`         | current snapshot, live             | delete files only                     |
-| `all_data_files`       | all snapshots                      | cross-snapshot data file tracking     |
-| `all_delete_files`     | all snapshots                      | cross-snapshot delete file tracking   |
-| `partitions`           | current snapshot                   | per-partition record/file counts      |
+| View                   | Scope                  | Use                                 |
+|------------------------|------------------------|-------------------------------------|
+| `snapshots`            | all snapshots          | snapshot inspection, time travel    |
+| `history`              | current ref's lineage  | ancestry, rollback detection        |
+| `metadata_log_entries` | all metadata files     | metadata file evolution             |
+| `refs`                 | current                | branches and tags                   |
+| `manifests`            | current snapshot       | current manifest state              |
+| `all_manifests`        | all snapshots          | manifest churn / cross-snapshot     |
+| `entries`              | current snapshot       | per-file ops in current snapshot    |
+| `all_entries`          | all snapshots          | full audit trail                    |
+| `files`                | current snapshot, live | data + delete files combined        |
+| `data_files`           | current snapshot, live | data files only                     |
+| `delete_files`         | current snapshot, live | delete files only                   |
+| `all_data_files`       | all snapshots          | cross-snapshot data file tracking   |
+| `all_delete_files`     | all snapshots          | cross-snapshot delete file tracking |
+| `partitions`           | current snapshot       | per-partition record/file counts    |
 
 Tables without the `all_` prefix reflect only the **current snapshot**. `all_*`
 variants may return multiple rows per file (one per snapshot the file was
@@ -48,6 +48,10 @@ valid in).
 
 These are the **exact** columns iceman emits. Generic Iceberg-spec docs mention
 fields iceman does not surface; trust this table for what you can SELECT.
+
+> Same schemas are also reachable at runtime via `iceman info <topic>` (e.g.
+> `iceman info partitions`, `iceman info entries`) - useful if this file isn't
+> loaded into context.
 
 ### `snapshots`
 
@@ -110,11 +114,11 @@ comparisons (e.g. `CAST(lower_bounds['3'] AS BIGINT)`).
 
 ## Status codes (entries / all_entries)
 
-| Value | Meaning                                   |
-|-------|-------------------------------------------|
-| 0     | Existing (unchanged in this snapshot)     |
-| 1     | Added                                     |
-| 2     | Deleted                                   |
+| Value | Meaning                               |
+|-------|---------------------------------------|
+| 0     | Existing (unchanged in this snapshot) |
+| 1     | Added                                 |
+| 2     | Deleted                               |
 
 Common pattern: `WHERE status = 1` for "added in this snapshot".
 

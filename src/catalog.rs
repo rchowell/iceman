@@ -97,7 +97,7 @@ impl IcemanConfig {
     }
 }
 
-fn default_config_path() -> Result<PathBuf, ConfigError> {
+pub fn default_config_path() -> Result<PathBuf, ConfigError> {
     let home = dirs::home_dir().ok_or(ConfigError::NoConfigDir)?;
     Ok(home.join(".config").join("iceman").join("config.toml"))
 }
@@ -198,7 +198,6 @@ async fn load_s3tables(
         .clone();
     let loader = CustomAwsCredentialLoader::new(Arc::new(SdkCredentialBridge(cred_provider)));
     let factory = Arc::new(OpenDalStorageFactory::S3 {
-        configured_scheme: "s3".to_string(),
         customized_credential_load: Some(loader),
     });
 

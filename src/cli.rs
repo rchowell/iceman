@@ -40,6 +40,7 @@ impl Identifier {
 
 /// Iceberg metadata tables.
 #[derive(Debug, Clone, Copy, ValueEnum)]
+#[value(rename_all = "snake_case")]
 pub enum MetadataTable {
     Snapshots,
     History,
@@ -128,7 +129,7 @@ pub const VERSION: &str = concat!(
 #[derive(Debug, Parser)]
 #[command(
     name = "iceman",
-    about = "A lightweight Iceberg CLI for AI agents",
+    about = "Iceman is a tool for working with Apache Iceberg.",
     version = VERSION
 )]
 pub struct IcemanCli {
@@ -156,6 +157,12 @@ pub struct IcemanCli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
+    /// Create the iceman config directory and a default config file
+    Init {
+        /// Overwrite an existing config file
+        #[arg(long)]
+        force: bool,
+    },
     /// List namespaces and tables (combined). Optional glob pattern filters by full identifier.
     List {
         /// Glob pattern (e.g. "analytics.*", "*orders*")
@@ -193,6 +200,11 @@ pub enum Command {
     Skill {
         #[command(subcommand)]
         action: SkillAction,
+    },
+    /// Print reference docs for an Iceberg concept (metadata table, status codes, etc.)
+    Info {
+        /// Topic name (e.g. partitions, refs, manifests). Omit to list available topics.
+        topic: Option<String>,
     },
     /// Print version and git ref
     Version,

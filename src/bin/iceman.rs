@@ -3,13 +3,17 @@ use clap::Parser;
 
 use iceman::catalog::resolve_catalog;
 use iceman::cli::{Command, EntityType, IcemanCli, Identifier, SkillAction, VERSION};
-use iceman::commands::{describe, inspect, list, skill};
+use iceman::commands::{describe, info, init, inspect, list, skill};
 use iceman::render::{RenderOpts, render_one, render_rows};
 
 #[tokio::main]
 async fn main() -> Result<()> {
     sigpipe::reset();
     let cli = IcemanCli::parse();
+
+    if let Command::Init { force } = &cli.command {
+        return init::run(cli.config.as_deref(), *force);
+    }
 
     if let Command::Skill { action } = &cli.command {
         return match action {
@@ -24,6 +28,10 @@ async fn main() -> Result<()> {
     if let Command::Version = &cli.command {
         println!("iceman {VERSION}");
         return Ok(());
+    }
+
+    if let Command::Info { topic } = &cli.command {
+        return info::run(topic.as_deref(), cli.output);
     }
 
     match cli.command {
@@ -70,7 +78,10 @@ async fn main() -> Result<()> {
             .await
         }
 
-        Command::Skill { .. } | Command::Version => {
+        Command::Init { .. }
+        | Command::Skill { .. }
+        | Command::Info { .. }
+        | Command::Version => {
             unreachable!("handled before catalog resolution")
         }
     }

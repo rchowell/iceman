@@ -1,142 +1,182 @@
 # Iceman
 
-An Apache Iceberg CLI built in Rust, designed for AI agents.
+Iceman is a tool for working with Apache Iceberg. 
 
-Powered by [iceberg-rust](https://github.com/apache/iceberg-rust).
+> I made this tool for introspecting Iceberg metadata tables. It is intentionally designed
+> to play well with unix tools like less/cut/awk so that you (or Claude) can effectively
+> use tool outputs. If you have duckdb installed, then you can inspect with '-q' and you
+> (or Claude) can run SQL queries against the metadata tables which is quite nice.
 
 ## Install
 
 ```sh
+# Homebrew
+brew install rchowell/tap/iceman
+
+# Or from source
 cargo install --path .
 ```
 
-## Configure
+## Agents
+
+Iceman ships with a Claude skill that teaches the agent how to use it.
 
 ```sh
-mkdir -p ~/.config/iceman
-$EDITOR ~/.config/iceman/config.toml
+iceman skill install            # ./.claude/skills/iceman/
+iceman skill install --user     # ~/.claude/skills/iceman/
 ```
 
-```toml
-default-catalog = "local"
+Iceman also has an `info` command which writes markdown to provide additonal
+context for agents. This is like MCP resources and has helped me a lot.
 
-[catalog.local]
-type = "rest"
-uri = "http://localhost:8181"
-warehouse = "my_warehouse"
-s3.endpoint = "http://localhost:9000"
+```sh
+iceman info metadata    # prints info about all metadata tables
+iceman info partitions  # prints info about the 'partitions' table
 ```
 
-Override at runtime with `--catalog NAME`, `--uri`, `--warehouse`, `--credential`,
-or `ICEMAN_CONFIG=path`.
+## Usage
 
-## Commands
+These are the basic commands, and you can always use `--help` to learn more.
 
 ```
 iceman list [PATTERN]                                # discover namespaces and tables
 iceman describe IDENT [--entity any|namespace|table] # describe namespace or table
 iceman inspect IDENT [METADATA_TABLE] [-q SQL] [-v]  # inspect table internals
+iceman info TERM                                     # print info about iceberg things
 iceman skill install                                 # install the bundled Claude skill
 iceman version
 ```
 
-## Output
-
-`iceman` writes straight to stdout. No built-in pager, no terminal trickery — every
-command behaves the same. Output adapts to where it's going:
-
-- **TTY**: columns are space-padded and aligned. Wide tables (especially `iceman inspect
-  -v`) will line-wrap; pipe through `less -S` (or `less -RSFX`) to scroll horizontally
-  instead.
-- **Pipe / redirect** → tab-separated values: header on line 1, no padding, single
-  `\t` between columns. `cut -f`, `awk -F'\t'`, and friends parse it directly.
-- **`--output json`** → JSONL (one compact JSON object per line) for `iceman list` and
-  `iceman inspect`. Pipe straight to `jq` — no `jq '.[]'` needed. `iceman describe`
-  describes a single entity, so it stays as one pretty-printed JSON object.
-
-By default, `iceman inspect` shows a terse subset of columns chosen for at-a-glance
-reading. Pass `-v / --verbose` to show every column. The SQL form (`-q`) chooses
-columns explicitly via `SELECT`, so `-v` doesn't apply.
-
-**Reading wide tables.** When a table is too wide for your terminal:
+Configuration is stored in ~/.config/iceman as TOML.
 
 ```sh
-iceman inspect analytics.events files -v | less -S          # scroll left/right
-iceman inspect analytics.events files -v | less -RSFX       # quit if it fits
-iceman inspect analytics.events files -v | column -t -s$'\t' | less -S  # re-aligned
+# Creates ~/.config/iceman/config.toml
+iceman init
 ```
 
-`-S` is the key flag — it tells `less` to truncate long lines instead of wrapping.
+```toml
+default-catalog = "default"
+
+[catalog.default]
+type = "sql"
+uri = "sqlite:////path/to/catalog.sqlite3"
+warehouse = "file:////path/to/warehouse"
+```
 
 ## Examples
 
-### Discover what's in the catalog
+Here are some examples of what you can do, with an emphasis on the
+inspect command which was the motivation behind this tool.
+
+### Listing Objects
+
+This command lists namespaces, tables and views; the optional pattern is GLOB-like.
 
 ```sh
-iceman list
-iceman list 'analytics.*'
-iceman describe analytics.events
+# Usage
+iceman list [PATTERN]
 ```
 
-### Inspect a table — terse by default
-
 ```sh
-iceman inspect analytics.events snapshots --limit 5
-iceman inspect analytics.events files --limit 5
-iceman inspect analytics.events partitions
-iceman inspect analytics.events refs
+# Example
+iceman list 'test.*'
+type   name
+table  test.t1
+table  test.t3
 ```
 
-`files` shows `content, record_count, file_size_in_bytes, file_path` by default —
-the wide `column_sizes`, `lower_bounds`, `upper_bounds` columns appear with `-v`:
+### Inspecting Tables
+
+This command can inspect tables and its metadata such as snapshots, manifests, and more.
 
 ```sh
-iceman inspect analytics.events files --limit 5 -v
+# Usage
+iceman inspect [OPTIONS] <IDENTIFIER> [TABLE]
 ```
 
-### Pipe to standard tools
+These are the available metadata tables.
 
-When piped, output is plain TSV — header on line 1, tabs between columns:
+| Table                  | Scope                        | Usage                                 |
+|------------------------|------------------------------|---------------------------------------|
+| `manifests`            | current snapshot             | Current manifest state                |
+| `files`                | current snapshot             | Active data & delete file stats       |
+| `partitions`           | current snapshot             | Partition-level stats                 |
+| `refs`                 | current                      | Branches and tags                     |
+| `history`              | all lineage                  | Snapshot ancestry, rollback detection |
+| `snapshots`            | all snapshots                | Snapshot inspection, time travel      |
+| `all_data_files`       | all snapshots                | Cross-snapshot data file tracking     |
+| `all_delete_files`     | all snapshots                | Cross-snapshot delete file tracking   |
+| `all_entries`          | all snapshots                | All file ops (data + deletes)         |
+| `all_manifests`        | all snapshots                | Cross-snapshot manifest tracking      |
+| `entries`              | all snapshots                | Full audit trail (all file ops)       |
+| `metadata_log_entries` | all metadata files           | Metadata file evolution               |
+
+> Let namespace=test and table=events.
 
 ```sh
+# List all snapshots for the 'events' table
+iceman inspect test.events snapshots --limit 5
+
+# List all data and delete files for the current snapshot of 'events'
+iceman inspect test.events files --limit 5
+
+# Inspect partition statistics like file counts and total bytes
+iceman inspect test.events partitions
+```
+
+Iceman does not show all columns by default; use `-v` to show all columns.
+
+```sh
+iceman inspect test.events files -v
+```
+
+### Piping Output
+
+Iceman output is TSV by default, so it works well with unix pipes. The purpose
+was to have table-like output which works well with unix pipes and no additional
+tokens. You can use the `--output json` flag to write output as JSON for 'jq'.
+
+```sh
+
+# reading wide tables with a pager with left-right scrolling
+iceman inspect test.events files -v | less -S
+
 # total bytes across all data files
-iceman inspect analytics.events files \
+iceman inspect test.events files \
   | awk -F'\t' 'NR>1 {sum+=$3} END {print sum}'
 
 # extract just the file paths
-iceman inspect analytics.events files | cut -f4 | tail -n +2
+iceman inspect test.events files \
+  | cut -f4 | tail -n +2
 
 # re-align the TSV for visual reading in another tool
-iceman inspect analytics.events files | column -t -s$'\t' | less -S
-```
+iceman inspect test.events files \
+  | column -t -s$'\t' | less -S
 
-### JSONL → jq
-
-```sh
 # count rows
-iceman inspect analytics.events files --output json | jq -s 'length'
+iceman inspect test.events files --output json \
+  | jq -s 'length'
 
 # stream one field per line — no .[] needed
-iceman inspect analytics.events files --output json | jq -r '.file_path'
+iceman inspect test.events files --output json \
+  | jq -r '.file_path'
 
 # filter and reshape
-iceman inspect analytics.events snapshots --output json \
+iceman inspect test.events snapshots --output json \
   | jq -r 'select(.operation == "append") | "\(.snapshot_id)\t\(.timestamp_ms)"'
 ```
 
-### Ad-hoc SQL across the metadata views
+### Using SQL
 
-`iceman inspect IDENT -q SQL` pipes your SQL to the local `duckdb` CLI over flat
-views named after the metadata tables (`snapshots`, `history`, `refs`, `manifests`,
-`entries`, `files`, `data_files`, `delete_files`, `partitions`, etc.). A view is
-materialized only if its name appears literally in the SQL.
+The `iceman inspect` command accepts a `-q <SQL>` argument. When given,
+iceman will execute the SQL with `duckdb` against views named after
+the metadata tables. This requires `duckdb` on PATH (`brew install duckdb`).
 
-Requires `duckdb` on PATH (`brew install duckdb`, or see
-https://duckdb.org/docs/installation/).
+> DuckDB is not bundled because it makes 'iceman' 80MB vs. 8MB without.
 
 ```sh
 # bytes added per snapshot
-iceman inspect analytics.events -q "
+iceman inspect test.events -q "
   SELECT snapshot_id,
          sum(file_size_in_bytes) AS bytes_added,
          count(*) AS files_added
@@ -148,7 +188,7 @@ iceman inspect analytics.events -q "
 "
 
 # compaction candidates by partition (small files)
-iceman inspect analytics.events -q "
+iceman inspect test.events -q "
   SELECT partition,
          file_count,
          total_data_file_size_in_bytes,
@@ -158,16 +198,6 @@ iceman inspect analytics.events -q "
   ORDER BY avg_bytes ASC
   LIMIT 20
 " --output json
-```
-
-## Use with Claude Code
-
-Iceman ships with a Claude skill that teaches the agent when and how to reach for
-each command:
-
-```sh
-iceman skill install            # ./.claude/skills/iceman/
-iceman skill install --user     # ~/.claude/skills/iceman/
 ```
 
 ## License

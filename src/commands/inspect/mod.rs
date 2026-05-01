@@ -12,7 +12,7 @@ use std::process::{Command, Stdio};
 
 use anyhow::{Context, Result};
 use futures::future::try_join_all;
-use iceberg::spec::{ManifestEntryRef, SnapshotRef, TableMetadata};
+use iceberg::spec::{Literal, ManifestEntryRef, PrimitiveLiteral, SnapshotRef, TableMetadata};
 use iceberg::table::Table;
 use serde::Serialize;
 
@@ -115,10 +115,29 @@ pub(super) fn partition_strings(s: &iceberg::spec::Struct) -> Vec<String> {
     s.fields()
         .iter()
         .map(|f| match f {
-            Some(lit) => format!("{lit:?}"),
+            Some(lit) => literal_to_str(lit),
             None => "null".to_string(),
         })
         .collect()
+}
+
+fn literal_to_str(lit: &Literal) -> String {
+    match lit {
+        Literal::Primitive(p) => match p {
+            PrimitiveLiteral::Boolean(v) => v.to_string(),
+            PrimitiveLiteral::Int(v) => v.to_string(),
+            PrimitiveLiteral::Long(v) => v.to_string(),
+            PrimitiveLiteral::Float(v) => v.0.to_string(),
+            PrimitiveLiteral::Double(v) => v.0.to_string(),
+            PrimitiveLiteral::String(v) => v.clone(),
+            PrimitiveLiteral::Binary(v) => v.iter().map(|b| format!("{b:02X}")).collect(),
+            PrimitiveLiteral::Int128(v) => v.to_string(),
+            PrimitiveLiteral::UInt128(v) => v.to_string(),
+            PrimitiveLiteral::AboveMax => "max".to_string(),
+            PrimitiveLiteral::BelowMin => "min".to_string(),
+        },
+        _ => format!("{lit:?}"),
+    }
 }
 
 pub(super) async fn load_entries_for_snapshot(

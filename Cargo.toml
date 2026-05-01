@@ -1,5 +1,8 @@
 [package]
 name = "iceman"
+description = "Iceman is a tool for working with Apache Iceberg."
+repository = "https://github.com/rchowell/iceman"
+authors = ["R. Conner Howell"]
 version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
@@ -19,13 +22,13 @@ dirs = "6"
 glob = "0.3"
 sigpipe = "0.1"
 tempfile = "3"
-iceberg = { path = "../iceberg-rust/crates/iceberg" }
-iceberg-catalog-glue = { path = "../iceberg-rust/crates/catalog/glue" }
-iceberg-catalog-hms = { path = "../iceberg-rust/crates/catalog/hms" }
-iceberg-catalog-rest = { path = "../iceberg-rust/crates/catalog/rest" }
-iceberg-catalog-s3tables = { path = "../iceberg-rust/crates/catalog/s3tables" }
-iceberg-catalog-sql = { path = "../iceberg-rust/crates/catalog/sql" }
-iceberg-storage-opendal = { path = "../iceberg-rust/crates/storage/opendal" }
+iceberg = { git = "https://github.com/rchowell/iceberg-rust", rev  = "dacf380" }
+iceberg-catalog-glue = { git = "https://github.com/rchowell/iceberg-rust", rev  = "dacf380" }
+iceberg-catalog-hms = { git = "https://github.com/rchowell/iceberg-rust", rev  = "dacf380" }
+iceberg-catalog-rest = { git = "https://github.com/rchowell/iceberg-rust", rev  = "dacf380" }
+iceberg-catalog-s3tables = { git = "https://github.com/rchowell/iceberg-rust", rev  = "dacf380" }
+iceberg-catalog-sql = { git = "https://github.com/rchowell/iceberg-rust", rev  = "dacf380" }
+iceberg-storage-opendal = { git = "https://github.com/rchowell/iceberg-rust", rev  = "dacf380" }
 futures = "0.3"
 reqsign = "0.16"
 reqwest = "0.12"
@@ -38,7 +41,7 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 toml = "0.8"
 
 [dev-dependencies]
-iceberg-catalog-sql = { path = "../iceberg-rust/crates/catalog/sql" }
+iceberg-catalog-sql = { git = "https://github.com/rchowell/iceberg-rust", rev  = "dacf380" }
 serde_json = "1"
 serde_yaml = "0.9"
 sqlx = { version = "0.8", features = ["any", "sqlite", "runtime-tokio", "tls-rustls", "migrate"], default-features = false }

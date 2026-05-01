@@ -90,6 +90,46 @@ iceman inspect analytics.events -q \
   "SELECT count(*) AS n_files, sum(file_size_in_bytes) AS bytes FROM files"
 ```
 
+## `iceman info [TOPIC]`
+
+Prints offline reference documentation for an Iceberg metadata concept. No
+catalog connection is required - everything is embedded in the binary, so this
+works without `--config`, network, or credentials.
+
+- With no `TOPIC`, prints the catalog of available topics with one-line blurbs.
+- With a `TOPIC`, prints that topic as plain markdown (ASCII tables, no
+  Unicode borders), suitable for piping into a pager or another tool.
+- Topic names are case-insensitive and treat `-` and `_` as equivalent, so
+  `entries`, `all-entries`, and `all_entries` all resolve to the same section.
+
+| Topic            | Aliases                                      | Returns                                              |
+|------------------|----------------------------------------------|------------------------------------------------------|
+| `metadata`       | `tables`, `overview`, `metadata-tables`      | Full metadata-table inventory + task-to-table cheats |
+| `status-codes`   | `status`                                     | `entries` status codes (0=existing, 1=added, 2=deleted) |
+| `content-types`  | `content`                                    | manifest content codes (0=data files, 1=delete files)|
+| `history`        |                                              | `history` table schema                               |
+| `metadata-log`   | `metadata_log_entries`                       | `metadata_log_entries` schema                        |
+| `snapshots`      |                                              | `snapshots` schema                                   |
+| `entries`        | `all-entries`, `all_entries`                 | `entries` / `all_entries` schema (incl. `data_file`) |
+| `files`          | `data-files`, `delete-files`                 | `files` schema (live data + delete files)            |
+| `manifests`      | `all-manifests`, `all_manifests`             | `manifests` / `all_manifests` schema                 |
+| `partitions`     |                                              | `partitions` schema                                  |
+| `all-data-files` | `all-delete-files`, `all_data_files`, `all_delete_files` | `all_data_files` / `all_delete_files` schema |
+| `refs`           |                                              | `refs` schema                                        |
+
+```
+iceman info                          # list topics
+iceman info partitions               # partitions schema
+iceman info entries                  # entries schema, including the data_file struct
+iceman info metadata                 # inventory + task-to-table reference
+iceman info refs --output json       # {"topic":"refs","content":"..."}
+```
+
+Pair with `iceman inspect`: `iceman info <table>` tells you the columns, then
+`iceman inspect db.t -q "SELECT ... FROM <table>"` queries them.
+
+Exits non-zero with the topic list printed to stderr if `TOPIC` is unknown.
+
 ## Output format
 
 `--output text` (default) prints aligned ASCII (no Unicode borders). iceman writes
