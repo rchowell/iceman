@@ -103,6 +103,70 @@ impl MetadataTable {
             Self::Snapshots | Self::History | Self::MetadataLog | Self::Refs
         )
     }
+
+    /// Returns a `CREATE TABLE` DDL string for an empty version of this view.
+    /// Used when the view has no rows so DuckDB still sees a correctly-typed table.
+    #[must_use]
+    pub fn empty_create_ddl(self) -> String {
+        let name = self.sql_name();
+        let cols: &str = match self {
+            Self::Snapshots => {
+                "snapshot_id BIGINT, parent_id BIGINT, timestamp_ms BIGINT, \
+                 operation VARCHAR, manifest_list VARCHAR, summary JSON"
+            }
+            Self::History => {
+                "made_current_at BIGINT, snapshot_id BIGINT, \
+                 parent_id BIGINT, is_current_ancestor BOOLEAN"
+            }
+            Self::MetadataLog => "timestamp BIGINT, file VARCHAR",
+            Self::Refs => {
+                "name VARCHAR, type VARCHAR, snapshot_id BIGINT, \
+                 max_reference_age_in_ms BIGINT, min_snapshots_to_keep INTEGER, \
+                 max_snapshot_age_in_ms BIGINT"
+            }
+            Self::Manifests => {
+                "content INTEGER, path VARCHAR, length BIGINT, \
+                 partition_spec_id INTEGER, added_snapshot_id BIGINT, \
+                 added_data_files_count UINTEGER, existing_data_files_count UINTEGER, \
+                 deleted_data_files_count UINTEGER, added_rows_count UBIGINT, \
+                 existing_rows_count UBIGINT, deleted_rows_count UBIGINT"
+            }
+            Self::AllManifests => {
+                "content INTEGER, path VARCHAR, length BIGINT, \
+                 partition_spec_id INTEGER, added_snapshot_id BIGINT, \
+                 added_data_files_count UINTEGER, existing_data_files_count UINTEGER, \
+                 deleted_data_files_count UINTEGER, added_rows_count UBIGINT, \
+                 existing_rows_count UBIGINT, deleted_rows_count UBIGINT, \
+                 reference_snapshot_id BIGINT"
+            }
+            Self::Entries | Self::AllEntries => {
+                "status INTEGER, snapshot_id BIGINT, sequence_number BIGINT, \
+                 file_sequence_number BIGINT, content INTEGER, file_path VARCHAR, \
+                 file_format VARCHAR, record_count UBIGINT, \
+                 file_size_in_bytes UBIGINT, partition VARCHAR[]"
+            }
+            Self::Files
+            | Self::DataFiles
+            | Self::DeleteFiles
+            | Self::AllDataFiles
+            | Self::AllDeleteFiles => {
+                "content INTEGER, file_path VARCHAR, file_format VARCHAR, \
+                 partition VARCHAR[], record_count UBIGINT, file_size_in_bytes UBIGINT, \
+                 column_sizes JSON, value_counts JSON, null_value_counts JSON, \
+                 nan_value_counts JSON, lower_bounds JSON, upper_bounds JSON, \
+                 sort_order_id INTEGER"
+            }
+            Self::Partitions => {
+                "partition VARCHAR, spec_id INTEGER, record_count UBIGINT, \
+                 file_count UINTEGER, total_data_file_size_in_bytes UBIGINT, \
+                 position_delete_record_count UBIGINT, \
+                 position_delete_file_count UINTEGER, \
+                 equality_delete_record_count UBIGINT, \
+                 equality_delete_file_count UINTEGER"
+            }
+        };
+        format!("CREATE TABLE {name}({cols})")
+    }
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]

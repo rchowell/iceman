@@ -83,6 +83,7 @@ pub fn render_jsonl_values(rows: &[&serde_json::Value]) -> Result<()> {
         serde_json::to_writer(&mut out, row)?;
         out.write_all(b"\n")?;
     }
+    out.flush()?;
     Ok(())
 }
 
@@ -96,6 +97,7 @@ pub fn render_one<T: Serialize + DisplayText>(
             let mut out = io::stdout().lock();
             serde_json::to_writer_pretty(&mut out, item)?;
             out.write_all(b"\n")?;
+            out.flush()?;
             Ok(())
         }
         OutputFormat::Text => {
@@ -112,6 +114,7 @@ fn write_jsonl<T: Serialize>(rows: &[T]) -> Result<()> {
         serde_json::to_writer(&mut out, row)?;
         out.write_all(b"\n")?;
     }
+    out.flush()?;
     Ok(())
 }
 

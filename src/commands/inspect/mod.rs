@@ -171,22 +171,19 @@ pub(super) async fn load_alive_entries(
 
 async fn run_query(table: &Table, sql: &str) -> Result<Vec<serde_json::Value>> {
     let sql = sql.trim_end_matches(';').trim();
-    let metadata = table.metadata();
     let dir = tempfile::tempdir()?;
     let sql_lower = sql.to_lowercase();
-    let has_snapshot = metadata.current_snapshot().is_some();
 
     let mut create_stmts = Vec::new();
     for &kind in MetadataTable::ALL {
         if !sql_lower.contains(kind.sql_name()) {
             continue;
         }
-        if kind.requires_snapshot() && !has_snapshot {
-            continue;
-        }
-        if let Some(stmt) = extract_and_write(kind, table, &dir).await? {
-            create_stmts.push(stmt);
-        }
+        let stmt = match extract_and_write(kind, table, &dir).await? {
+            Some(s) => s,
+            None => kind.empty_create_ddl(),
+        };
+        create_stmts.push(stmt);
     }
 
     let result_path = dir.path().join("_result.json");
