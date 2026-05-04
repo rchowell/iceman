@@ -59,8 +59,8 @@ jobs:
           VERSION_NO_V=${VERSION#v}
 
           # Update version and sha256 in Formula/iceman.rb
-          sed -i "" "s/version \"[^\"]*\"/version \"$VERSION_NO_V\"/" Formula/iceman.rb
-          sed -i "" "s/sha256 \"<ARM_SHA256>\"/sha256 \"$SHA256\"/" Formula/iceman.rb
+          sed -i "s/version \"[^\"]*\"/version \"$VERSION_NO_V\"/" Formula/iceman.rb
+          sed -i "s/sha256 \"[^\"]*\"/sha256 \"$SHA256\"/" Formula/iceman.rb
 
       - name: Commit and push
         run: |
